@@ -87,14 +87,14 @@ async def analyze_image(
         # Get ML predictions
         predictions = get_top_artists(str(file_path), top_k=3)
         
-        # Convert to Pydantic models
+        # Convert to Pydantic models (predictions are dicts)
         top_artists = [
             ArtistPrediction(
-                index=idx,
-                artist_slug=slug,
-                probability=prob
+                index=p["index"],
+                artist_slug=p["artist_slug"],
+                probability=p["probability"]
             )
-            for idx, slug, prob in predictions
+            for p in predictions
         ]
         
         # Generate explanation (stub)
