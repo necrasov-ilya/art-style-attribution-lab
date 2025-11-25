@@ -117,8 +117,8 @@ async def analyze_image(
             for p in predictions["styles"]
         ]
         
-        # Generate explanation (stub)
-        explanation = generate_explanation(top_artists, top_styles)
+        # Generate LLM explanation (async)
+        explanation = await generate_explanation(top_artists, top_genres, top_styles)
         
         # Generate thumbnails (stub)
         thumbnails = generate_thumbnails(top_artists, count=4)

@@ -38,8 +38,21 @@ def preprocess_image(image_path: str) -> np.ndarray:
     return arr
 
 
-def get_top_predictions(probs: np.ndarray, names: list, top_k: int, ignore_indices: list = None):
-    """Get top-k predictions, optionally ignoring certain indices, and renormalize."""
+def get_top_predictions(
+    probs: np.ndarray, 
+    names: list, 
+    top_k: int, 
+    ignore_indices: list = None
+):
+    """
+    Get top-k predictions with optional filtering.
+    
+    Args:
+        probs: Raw probability array
+        names: List of class names
+        top_k: Number of top results to return
+        ignore_indices: Indices to exclude (e.g., Unknown)
+    """
     if ignore_indices is None:
         ignore_indices = []
     
@@ -49,14 +62,9 @@ def get_top_predictions(probs: np.ndarray, names: list, top_k: int, ignore_indic
         if 0 <= idx < len(probs):
             mask[idx] = False
     
-    # Get valid probabilities and renormalize
+    # Get valid probabilities
     valid_probs = probs.copy()
     valid_probs[~mask] = 0
-    
-    # Renormalize so valid probs sum to 1
-    total = valid_probs.sum()
-    if total > 0:
-        valid_probs = valid_probs / total
     
     # Get top-k indices
     top_indices = valid_probs.argsort()[-top_k:][::-1]
@@ -82,7 +90,7 @@ def predict_top_artists(image_path: str, top_k: int = 3):
 def predict_full(image_path: str, top_k: int = 3):
     """
     Full prediction returning artists, genres, and styles.
-    Filters out 'Unknown' categories and renormalizes probabilities.
+    Filters out 'Unknown' categories.
     """
     x = preprocess_image(image_path)
     predictions = model.predict(x, verbose=0)
@@ -109,7 +117,7 @@ def predict_full(image_path: str, top_k: int = 3):
         ignore_indices=[UNKNOWN_GENRE_IDX] if UNKNOWN_GENRE_IDX >= 0 else []
     )
 
-    # Style predictions (no unknown to filter)
+    # Style predictions
     style_logits = predictions["style"][0]
     style_probs = tf.nn.softmax(style_logits).numpy()
     styles = get_top_predictions(style_probs, STYLE_NAMES, top_k)

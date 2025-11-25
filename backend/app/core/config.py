@@ -1,6 +1,7 @@
 """Application configuration with environment variables."""
 import os
 from pathlib import Path
+from typing import Optional, Literal
 from pydantic_settings import BaseSettings
 
 
@@ -25,6 +26,25 @@ class Settings(BaseSettings):
     
     # ML model path
     ML_DIR: Path = Path(__file__).parent.parent.parent.parent / "ml"
+    
+    # LLM Configuration
+    LLM_PROVIDER: Literal["openai", "openrouter", "ollama", "none"] = "none"
+    
+    # OpenAI
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    
+    # OpenRouter
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "anthropic/claude-3-haiku"
+    
+    # Ollama
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2"
+    
+    # LLM Generation settings
+    LLM_MAX_TOKENS: int = 512
+    LLM_TEMPERATURE: float = 0.7
     
     class Config:
         env_file = ".env"
