@@ -1,5 +1,6 @@
 """Pydantic schemas for request/response validation."""
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -134,3 +135,37 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     detail: Optional[str] = None
+
+
+# ============ History Schemas ============
+
+class HistoryItemBase(BaseModel):
+    """Base history item schema."""
+    top_artist_slug: str
+    image_url: str
+    analysis_result: Dict[str, Any]
+
+
+class HistoryItemCreate(HistoryItemBase):
+    """Schema for creating history item."""
+    image_filename: str
+
+
+class HistoryItemResponse(BaseModel):
+    """Schema for history item in list."""
+    id: int
+    image_url: str
+    top_artist_slug: str
+    created_at: datetime
+    analysis_result: Dict[str, Any]
+    
+    class Config:
+        from_attributes = True
+
+
+class HistoryListResponse(BaseModel):
+    """Response with list of history items."""
+    success: bool = True
+    items: List[HistoryItemResponse]
+    total: int
+

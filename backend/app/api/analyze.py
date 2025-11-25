@@ -3,10 +3,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.core.database import get_db
 from app.models.user import User
+from app.models.history import AnalysisHistory
 from app.models.schemas import (
     AnalysisResponse,
     ArtistPrediction,
@@ -39,6 +42,7 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/bmp"}
 async def analyze_image(
     file: UploadFile = File(..., description="Image file to analyze"),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Analyze an uploaded image to detect art style and predict similar artists.
@@ -123,15 +127,35 @@ async def analyze_image(
         # Generate LLM explanation (async)
         explanation = await generate_explanation(top_artists, top_genres, top_styles)
         
-        return AnalysisResponse(
+        # Build response
+        response = AnalysisResponse(
             success=True,
-            image_path=str(file_path),
+            image_path=f"/api/uploads/{unique_filename}",
             top_artists=top_artists,
             top_genres=top_genres,
             top_styles=top_styles,
             explanation=explanation,
             message="Analysis completed successfully"
         )
+        
+        # Save to history (only for non-guest users)
+        try:
+            history_item = AnalysisHistory(
+                user_id=current_user.id,
+                image_filename=unique_filename,
+                image_url=f"/api/uploads/{unique_filename}",
+                top_artist_slug=top_artists[0].artist_slug if top_artists else "unknown",
+                top_artist_probability=f"{top_artists[0].probability:.3f}" if top_artists else None,
+                analysis_result=response.model_dump(),
+            )
+            db.add(history_item)
+            db.commit()
+        except Exception as save_error:
+            # Don't fail the whole request if history save fails
+            db.rollback()
+            print(f"Warning: Failed to save to history: {save_error}")
+        
+        return response
         
     except Exception as e:
         raise HTTPException(

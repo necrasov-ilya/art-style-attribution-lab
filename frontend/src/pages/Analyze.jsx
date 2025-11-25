@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { analysisAPI } from '../api'
+import { analysisAPI, historyAPI } from '../api'
 import { 
   Upload, 
   X, 
@@ -39,6 +39,7 @@ function Analyze() {
   
   // UI State
   const [history, setHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
   const [showPanel, setShowPanel] = useState(true)
   
@@ -47,42 +48,52 @@ function Analyze() {
   const [generationPrompt, setGenerationPrompt] = useState('')
   const [generatedImages, setGeneratedImages] = useState(null)
   const [generationError, setGenerationError] = useState('')
+  const [generationStep, setGenerationStep] = useState(0)
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('analysis_history')
-    if (savedHistory) {
-      setHistory(JSON.parse(savedHistory))
+    let interval
+    if (generating) {
+      setGenerationStep(0)
+      const steps = [
+        "Анализ композиции...",
+        "Извлечение стиля...",
+        "Синтез палитры...",
+        "Генерация вариаций...",
+        "Финальная обработка..."
+      ]
+      interval = setInterval(() => {
+        setGenerationStep(prev => (prev + 1) % steps.length)
+      }, 1500)
     }
+    return () => clearInterval(interval)
+  }, [generating])
+
+  // Load history from server
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        setHistoryLoading(true)
+        const response = await historyAPI.getAll()
+        setHistory(response.data.items || [])
+      } catch (err) {
+        console.error('Failed to load history:', err)
+        setHistory([])
+      } finally {
+        setHistoryLoading(false)
+      }
+    }
+    loadHistory()
   }, [])
-
-  // Auto-open sidebar if history exists, but only on large screens
-  useEffect(() => {
-    if (history.length > 0 && window.innerWidth >= 1024) {
-      setShowSidebar(true)
-    }
-  }, [history.length])
-
-  const addToHistory = (analysisResult, imagePreview) => {
-    const newItem = {
-      id: Date.now(),
-      date: new Date().toISOString(),
-      preview: imagePreview,
-      artist: analysisResult.top_artists[0].artist_slug,
-      result: analysisResult
-    }
-    const newHistory = [newItem, ...history]
-    setHistory(newHistory)
-    localStorage.setItem('analysis_history', JSON.stringify(newHistory))
-  }
 
   const loadFromHistory = (item) => {
     setFile(null)
-    setPreview(item.preview)
-    setResult(item.result)
+    setPreview(item.image_url)
+    setResult(item.analysis_result)
     setGeneratedImages(null)
     setGenerationPrompt('')
     setError('')
     setShowPanel(true)
+    setShowSidebar(false)
   }
 
   const handleFileSelect = (selectedFile) => {
@@ -132,11 +143,23 @@ function Analyze() {
     try {
       const response = await analysisAPI.analyze(file)
       setResult(response.data)
-      addToHistory(response.data, preview)
+      // Backend auto-saves to history, refresh the list
+      const historyResponse = await historyAPI.getAll()
+      setHistory(historyResponse.data.items || [])
     } catch (err) {
       setError(err.response?.data?.detail || 'Ошибка анализа. Попробуйте снова.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const deleteFromHistory = async (id, e) => {
+    e.stopPropagation()
+    try {
+      await historyAPI.delete(id)
+      setHistory(prev => prev.filter(item => item.id !== id))
+    } catch (err) {
+      console.error('Failed to delete history item:', err)
     }
   }
 
@@ -189,11 +212,11 @@ function Analyze() {
   return (
     <div className="h-screen w-full bg-gray-950 text-white overflow-hidden flex font-sans selection:bg-purple-500/30">
       
-      {/* Sidebar (History) */}
-      <aside 
+      {/* Sidebar (History) - Floating Drawer */}
+      <div 
         className={`
-          fixed lg:static inset-y-0 left-0 z-50 w-72 bg-gray-900/95 backdrop-blur-xl border-r border-white/10 transform transition-all duration-300 ease-in-out flex flex-col
-          ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:w-0 lg:border-none lg:overflow-hidden'}
+          fixed inset-y-0 left-0 z-50 w-80 bg-gray-900/95 backdrop-blur-xl border-r border-white/10 transform transition-transform duration-300 ease-in-out shadow-2xl
+          ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
@@ -206,8 +229,13 @@ function Analyze() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-          {history.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar h-[calc(100%-8rem)]">
+          {historyLoading ? (
+            <div className="text-center py-12 text-gray-500 text-sm">
+              <Loader2 size={24} className="mx-auto mb-3 animate-spin opacity-50" />
+              <p>Загрузка...</p>
+            </div>
+          ) : history.length === 0 ? (
             <div className="text-center py-12 text-gray-500 text-sm">
               <History size={24} className="mx-auto mb-3 opacity-30" />
               <p>Нет сохраненных работ</p>
@@ -215,29 +243,39 @@ function Analyze() {
           ) : (
             <div className="space-y-2">
               {history.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  onClick={() => loadFromHistory(item)}
-                  className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-all group text-left border border-transparent hover:border-white/10"
+                  className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-all group text-left border border-transparent hover:border-white/10 relative"
                 >
-                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10">
-                    <img src={item.preview} alt="" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate text-gray-200 group-hover:text-white transition-colors">
-                      {formatArtistName(item.artist)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(item.date).toLocaleDateString()}
-                    </p>
-                  </div>
-                </button>
+                  <button
+                    onClick={() => loadFromHistory(item)}
+                    className="flex items-center gap-3 flex-1 min-w-0"
+                  >
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10">
+                      <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate text-gray-200 group-hover:text-white transition-colors">
+                        {formatArtistName(item.top_artist_slug)}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => deleteFromHistory(item.id, e)}
+                    className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 text-gray-500 rounded-lg transition-all"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10 bg-gray-900/95">
           <button 
             onClick={logout}
             className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
@@ -246,7 +284,7 @@ function Analyze() {
             <span className="font-medium">Выйти</span>
           </button>
         </div>
-      </aside>
+      </div>
 
       {/* Main Workspace */}
       <div className="flex-1 relative h-full flex flex-col min-w-0">
@@ -254,29 +292,21 @@ function Analyze() {
         {/* Top Bar */}
         <header className="absolute top-0 left-0 right-0 h-16 z-40 flex items-center justify-between px-6 pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
-            {!showSidebar && (
-              <button 
-                onClick={() => setShowSidebar(true)}
-                className="p-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all"
-              >
-                <Menu size={20} />
-              </button>
-            )}
-            <div className="flex items-center gap-3 bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full">
-              <div className="w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-full flex items-center justify-center text-white text-[10px]">
-                <Palette size={14} />
-              </div>
+            <button 
+              onClick={() => setShowSidebar(true)}
+              className="group flex items-center gap-2 px-3 py-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <History size={18} />
+              <span className="text-sm font-medium max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">История</span>
+            </button>
+            
+            <div className="flex items-center gap-3 px-4 py-2 rounded-full">
+              <img src="/images/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
               <span className="font-bold text-sm tracking-tight">Heritage Frame</span>
             </div>
           </div>
 
           <div className="flex items-center gap-3 pointer-events-auto">
-            <button 
-              onClick={toggleTheme}
-              className="p-2.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 transition-all"
-            >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
             {preview && (
               <button 
                 onClick={() => setShowPanel(!showPanel)}
@@ -349,7 +379,7 @@ function Analyze() {
             ) : (
               /* Image Preview */
               <div className={`relative w-full h-full flex items-center justify-center transition-all duration-500 ${showPanel ? 'lg:pr-[400px]' : ''}`}>
-                <div className="relative max-w-full max-h-full shadow-2xl rounded-lg overflow-hidden group">
+                <div className="relative max-w-full max-h-full shadow-2xl rounded-lg group flex items-center justify-center min-w-[320px] min-h-[320px]">
                   <img 
                     src={preview} 
                     alt="Analysis target" 
@@ -358,7 +388,7 @@ function Analyze() {
                   
                   {/* Scanning Effect */}
                   {loading && (
-                    <div className="absolute inset-0 z-20 pointer-events-none">
+                    <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden rounded-lg">
                       <div className="absolute left-0 right-0 h-1 bg-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.8)] animate-scan" />
                       <div className="absolute inset-0 bg-purple-500/10 animate-pulse" />
                     </div>
@@ -367,26 +397,26 @@ function Analyze() {
                   {/* Reset Button */}
                   <button 
                     onClick={handleReset}
-                    className="absolute top-4 right-4 p-2 bg-black/60 backdrop-blur-md border border-white/20 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/80 hover:border-red-500"
+                    className="absolute top-4 right-4 p-2 bg-black/60 backdrop-blur-md border border-white/20 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/80 hover:border-red-500 z-30"
                   >
                     <X size={20} />
                   </button>
-                </div>
 
-                {/* Analyze Button (Floating) */}
-                {!result && !loading && (
-                  <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30">
-                    <button
-                      onClick={handleAnalyze}
-                      className="group relative px-8 py-4 bg-white text-black rounded-full font-bold shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:shadow-[0_0_60px_rgba(255,255,255,0.5)] hover:-translate-y-1 transition-all duration-300 overflow-hidden"
-                    >
-                      <span className="relative z-10 flex items-center gap-2 text-lg">
-                        <Sparkles size={20} className="text-purple-600" />
-                        Анализировать
-                      </span>
-                    </button>
-                  </div>
-                )}
+                  {/* Analyze Button (Floating - Centered on Image) */}
+                  {!result && !loading && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30">
+                      <button
+                        onClick={handleAnalyze}
+                        className="group relative px-8 py-4 bg-white text-black rounded-full font-bold shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:shadow-[0_0_60px_rgba(255,255,255,0.5)] hover:-translate-y-1 transition-all duration-300 overflow-hidden whitespace-nowrap"
+                      >
+                        <span className="relative z-10 flex items-center gap-2 text-lg">
+                          <Sparkles size={20} className="text-purple-600" />
+                          Анализировать
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -394,7 +424,7 @@ function Analyze() {
           {/* Floating Right Panel */}
           <div 
             className={`
-              absolute top-4 bottom-4 right-4 w-[400px] bg-black/80 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl z-40 flex flex-col overflow-hidden transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+              absolute top-20 bottom-4 right-4 w-[400px] bg-black/80 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl z-40 flex flex-col overflow-hidden transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)
               ${showPanel && preview ? 'translate-x-0' : 'translate-x-[120%]'}
             `}
           >
@@ -475,28 +505,66 @@ function Analyze() {
                     </div>
                     
                     <div className="space-y-3">
-                      <textarea
-                        value={generationPrompt}
-                        onChange={(e) => setGenerationPrompt(e.target.value)}
-                        placeholder={`Создать вариацию в стиле ${formatArtistName(result.top_artists[0].artist_slug)}...`}
-                        className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 transition-all resize-none h-20"
-                      />
-                      
-                      <button
-                        onClick={handleGenerate}
-                        disabled={generating}
-                        className="w-full py-3 bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                        {generating ? 'Создание...' : 'Генерировать'}
-                      </button>
+                      {!generating ? (
+                        <>
+                          <textarea
+                            value={generationPrompt}
+                            onChange={(e) => setGenerationPrompt(e.target.value)}
+                            placeholder={`Создать вариацию в стиле ${formatArtistName(result.top_artists[0].artist_slug)}...`}
+                            className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 transition-all resize-none h-20"
+                          />
+                          
+                          <button
+                            onClick={handleGenerate}
+                            className="w-full py-3 bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Sparkles size={16} />
+                            Генерировать
+                          </button>
+                        </>
+                      ) : (
+                        <div className="relative h-48 rounded-xl overflow-hidden border border-white/10 bg-black/50">
+                          {/* Alchemical Process Animation */}
+                          <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 via-indigo-900/20 to-purple-900/20 animate-shimmer-fast" style={{ backgroundSize: '200% 100%' }} />
+                          
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                            <div className="relative w-16 h-16 mb-4">
+                              <div className="absolute inset-0 rounded-full border-2 border-purple-500/30 animate-ping" />
+                              <div className="absolute inset-0 rounded-full border-2 border-t-purple-500 animate-spin" />
+                              <div className="absolute inset-2 rounded-full bg-purple-500/20 backdrop-blur-sm flex items-center justify-center">
+                                <Sparkles size={20} className="text-purple-400 animate-pulse" />
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-white animate-pulse">
+                                {[
+                                  "Анализ композиции...",
+                                  "Извлечение стиля...",
+                                  "Синтез палитры...",
+                                  "Генерация вариаций...",
+                                  "Финальная обработка..."
+                                ][generationStep]}
+                              </p>
+                              <p className="text-xs text-gray-500">AI трансмутация</p>
+                            </div>
+                          </div>
+
+                          {/* Digital Noise Overlay */}
+                          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")' }} />
+                        </div>
+                      )}
                     </div>
 
                     {/* Generated Images Grid */}
-                    {generatedImages && (
-                      <div className="mt-6 grid grid-cols-2 gap-2 animate-fade-in">
+                    {generatedImages && !generating && (
+                      <div className="mt-6 grid grid-cols-2 gap-2">
                         {generatedImages.images.map((img, index) => (
-                          <div key={index} className="group relative aspect-square rounded-lg overflow-hidden bg-gray-800">
+                          <div 
+                            key={index} 
+                            className="group relative aspect-square rounded-lg overflow-hidden bg-gray-800 animate-blur-in"
+                            style={{ animationDelay: `${index * 150}ms` }}
+                          >
                             <img src={img.url} alt="" className="w-full h-full object-cover" />
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <button className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-white/40">

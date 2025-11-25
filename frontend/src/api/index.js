@@ -56,4 +56,11 @@ export const analysisAPI = {
   },
 }
 
+// History API
+export const historyAPI = {
+  getAll: (limit = 50, offset = 0) => api.get(`/history?limit=${limit}&offset=${offset}`),
+  delete: (id) => api.delete(`/history/${id}`),
+  clear: () => api.delete('/history'),
+}
+
 export default api

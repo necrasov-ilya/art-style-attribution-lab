@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import api_router
 from app.core.config import settings
 from app.core.database import engine, Base
+
+# Import all models to ensure they're registered with Base
+from app.models import User, AnalysisHistory
 
 
 @asynccontextmanager
@@ -39,6 +43,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount uploads directory for serving images
+app.mount("/api/uploads", StaticFiles(directory=str(settings.UPLOAD_DIR)), name="uploads")
 
 # Include API router
 app.include_router(api_router)
