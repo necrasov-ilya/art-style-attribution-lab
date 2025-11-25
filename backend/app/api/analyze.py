@@ -10,9 +10,11 @@ from app.models.user import User
 from app.models.schemas import (
     AnalysisResponse,
     ArtistPrediction,
+    GenrePrediction,
+    StylePrediction,
     ErrorResponse,
 )
-from app.services.classifier import get_top_artists
+from app.services.classifier import get_full_predictions
 from app.services.llm_service import generate_explanation
 from app.services.comfyui_service import generate_thumbnails
 
@@ -84,21 +86,39 @@ async def analyze_image(
         )
     
     try:
-        # Get ML predictions
-        predictions = get_top_artists(str(file_path), top_k=3)
+        # Get full ML predictions (artists, genres, styles)
+        predictions = get_full_predictions(str(file_path), top_k=3)
         
-        # Convert to Pydantic models (predictions are dicts)
+        # Convert to Pydantic models
         top_artists = [
             ArtistPrediction(
                 index=p["index"],
                 artist_slug=p["artist_slug"],
                 probability=p["probability"]
             )
-            for p in predictions
+            for p in predictions["artists"]
+        ]
+        
+        top_genres = [
+            GenrePrediction(
+                index=p["index"],
+                name=p["name"],
+                probability=p["probability"]
+            )
+            for p in predictions["genres"]
+        ]
+        
+        top_styles = [
+            StylePrediction(
+                index=p["index"],
+                name=p["name"],
+                probability=p["probability"]
+            )
+            for p in predictions["styles"]
         ]
         
         # Generate explanation (stub)
-        explanation = generate_explanation(top_artists)
+        explanation = generate_explanation(top_artists, top_styles)
         
         # Generate thumbnails (stub)
         thumbnails = generate_thumbnails(top_artists, count=4)
@@ -107,6 +127,8 @@ async def analyze_image(
             success=True,
             image_path=str(file_path),
             top_artists=top_artists,
+            top_genres=top_genres,
+            top_styles=top_styles,
             explanation=explanation,
             generated_thumbnails=thumbnails,
             message="Analysis completed successfully"

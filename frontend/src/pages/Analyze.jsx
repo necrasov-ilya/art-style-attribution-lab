@@ -75,6 +75,10 @@ function Analyze() {
     return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   }
 
+  const formatName = (name) => {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
   return (
     <div className="page">
       <header className="header">
@@ -187,8 +191,63 @@ function Analyze() {
                 </ul>
               </div>
 
-              {/* Explanation */}
+              {/* Styles & Genres */}
               <div className="result-card">
+                <h3 className="result-title">🎨 Style & Genre</h3>
+                
+                {result.top_styles && result.top_styles.length > 0 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <h4 style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      Art Styles
+                    </h4>
+                    <ul className="artists-list">
+                      {result.top_styles.map((style, index) => (
+                        <li key={style.name} className="artist-item">
+                          <span className="artist-rank">#{index + 1}</span>
+                          <span className="artist-name">{formatName(style.name)}</span>
+                          <span className="artist-probability">
+                            {(style.probability * 100).toFixed(1)}%
+                          </span>
+                          <div className="probability-bar">
+                            <div
+                              className="probability-fill"
+                              style={{ width: `${style.probability * 100}%`, background: '#10b981' }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {result.top_genres && result.top_genres.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      Genres
+                    </h4>
+                    <ul className="artists-list">
+                      {result.top_genres.map((genre, index) => (
+                        <li key={genre.name} className="artist-item">
+                          <span className="artist-rank">#{index + 1}</span>
+                          <span className="artist-name">{formatName(genre.name)}</span>
+                          <span className="artist-probability">
+                            {(genre.probability * 100).toFixed(1)}%
+                          </span>
+                          <div className="probability-bar">
+                            <div
+                              className="probability-fill"
+                              style={{ width: `${genre.probability * 100}%`, background: '#f59e0b' }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Explanation */}
+              <div className="result-card" style={{ gridColumn: 'span 2' }}>
                 <h3 className="result-title">📝 Analysis</h3>
                 <p className="explanation-text">{result.explanation.text}</p>
                 {result.explanation.source === 'stub' && (

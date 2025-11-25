@@ -57,6 +57,30 @@ class ArtistPrediction(BaseModel):
         return self.artist_slug.replace("-", " ").title()
 
 
+class GenrePrediction(BaseModel):
+    """Single genre prediction."""
+    index: int
+    name: str
+    probability: float = Field(..., ge=0.0, le=1.0)
+    
+    @property
+    def display_name(self) -> str:
+        """Convert to readable name."""
+        return self.name.replace("_", " ").title()
+
+
+class StylePrediction(BaseModel):
+    """Single style prediction."""
+    index: int
+    name: str
+    probability: float = Field(..., ge=0.0, le=1.0)
+    
+    @property
+    def display_name(self) -> str:
+        """Convert to readable name."""
+        return self.name.replace("_", " ").title()
+
+
 class AnalysisExplanation(BaseModel):
     """LLM-generated explanation (stub for now)."""
     text: str
@@ -80,6 +104,8 @@ class AnalysisResponse(BaseModel):
     success: bool = True
     image_path: str
     top_artists: List[ArtistPrediction]
+    top_genres: List[GenrePrediction] = []
+    top_styles: List[StylePrediction] = []
     explanation: AnalysisExplanation
     generated_thumbnails: List[GeneratedThumbnail]
     message: Optional[str] = None
