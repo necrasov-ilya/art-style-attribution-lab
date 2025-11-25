@@ -11,6 +11,12 @@ function Analyze() {
   const [result, setResult] = useState(null)
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef(null)
+  
+  // Generation state
+  const [generating, setGenerating] = useState(false)
+  const [generationPrompt, setGenerationPrompt] = useState('')
+  const [generatedImages, setGeneratedImages] = useState(null)
+  const [generationError, setGenerationError] = useState('')
 
   const handleFileSelect = (selectedFile) => {
     if (!selectedFile) return
@@ -69,6 +75,37 @@ function Analyze() {
     setPreview(null)
     setResult(null)
     setError('')
+    setGeneratedImages(null)
+    setGenerationPrompt('')
+    setGenerationError('')
+  }
+
+  const handleGenerate = async () => {
+    if (!result || !result.top_artists.length) return
+    
+    setGenerating(true)
+    setGenerationError('')
+    setGeneratedImages(null)
+    
+    try {
+      const topArtist = result.top_artists[0]
+      const topStyle = result.top_styles?.[0]
+      const topGenre = result.top_genres?.[0]
+      
+      const response = await analysisAPI.generate({
+        artist_slug: topArtist.artist_slug,
+        style_name: topStyle?.name || null,
+        genre_name: topGenre?.name || null,
+        user_prompt: generationPrompt || null,
+        count: 4
+      })
+      
+      setGeneratedImages(response.data)
+    } catch (err) {
+      setGenerationError(err.response?.data?.detail || 'Generation failed. Please try again.')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const formatArtistName = (slug) => {
@@ -257,26 +294,77 @@ function Analyze() {
                 )}
               </div>
 
-              {/* Generated Thumbnails */}
+              {/* Image Generation Section */}
               <div className="result-card" style={{ gridColumn: 'span 2' }}>
-                <h3 className="result-title">🖼️ Style Variations</h3>
+                <h3 className="result-title">🎨 Generate in This Style</h3>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '16px', fontSize: '0.875rem' }}>
-                  Generated images in similar art styles (placeholder images)
+                  Generate new images in the style of {formatArtistName(result.top_artists[0]?.artist_slug || 'artist')}
                 </p>
-                <div className="thumbnails-grid">
-                  {result.generated_thumbnails.map((thumb, index) => (
-                    <div key={index} className="thumbnail-card">
-                      <img
-                        src={thumb.url}
-                        alt={`Style variation ${index + 1}`}
-                        className="thumbnail-image"
-                      />
-                      <p className="thumbnail-caption">
-                        {formatArtistName(thumb.artist_slug)} style
-                      </p>
-                    </div>
-                  ))}
+                
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    Describe what you want to generate (optional):
+                  </label>
+                  <textarea
+                    value={generationPrompt}
+                    onChange={(e) => setGenerationPrompt(e.target.value)}
+                    placeholder="e.g., a sunset over the ocean, a portrait of a cat, a mystical forest..."
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.875rem',
+                      minHeight: '80px',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
                 </div>
+                
+                {generationError && (
+                  <div className="alert alert-error" style={{ marginBottom: '16px' }}>
+                    {generationError}
+                  </div>
+                )}
+                
+                <button
+                  className="btn btn-primary"
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  style={{ marginBottom: '16px' }}
+                >
+                  {generating ? (
+                    <>
+                      <span className="loading-spinner" />
+                      &nbsp;Generating...
+                    </>
+                  ) : (
+                    '🖼️ Generate Images'
+                  )}
+                </button>
+                
+                {/* Generated Images */}
+                {generatedImages && (
+                  <div style={{ marginTop: '16px' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                      <strong>Prompt used:</strong> {generatedImages.prompt}
+                    </p>
+                    <div className="thumbnails-grid">
+                      {generatedImages.images.map((img, index) => (
+                        <div key={index} className="thumbnail-card">
+                          <img
+                            src={img.url}
+                            alt={`Generated ${index + 1}`}
+                            className="thumbnail-image"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

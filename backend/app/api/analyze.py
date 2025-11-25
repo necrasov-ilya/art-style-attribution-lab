@@ -12,11 +12,14 @@ from app.models.schemas import (
     ArtistPrediction,
     GenrePrediction,
     StylePrediction,
+    GenerateRequest,
+    GenerateResponse,
+    GeneratedThumbnail,
     ErrorResponse,
 )
 from app.services.classifier import get_full_predictions
 from app.services.llm_service import generate_explanation
-from app.services.comfyui_service import generate_thumbnails
+from app.services.comfyui_service import generate_images_with_prompt
 
 router = APIRouter(tags=["Analysis"])
 
@@ -120,9 +123,6 @@ async def analyze_image(
         # Generate LLM explanation (async)
         explanation = await generate_explanation(top_artists, top_genres, top_styles)
         
-        # Generate thumbnails (stub)
-        thumbnails = generate_thumbnails(top_artists, count=4)
-        
         return AnalysisResponse(
             success=True,
             image_path=str(file_path),
@@ -130,7 +130,6 @@ async def analyze_image(
             top_genres=top_genres,
             top_styles=top_styles,
             explanation=explanation,
-            generated_thumbnails=thumbnails,
             message="Analysis completed successfully"
         )
         
@@ -138,4 +137,61 @@ async def analyze_image(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
+        )
+
+
+@router.post(
+    "/generate",
+    response_model=GenerateResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        401: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def generate_style_images(
+    request: GenerateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate images in a specific artistic style.
+    
+    Uses LLM to create a prompt based on the artist/style/genre,
+    optionally incorporating user-provided details.
+    Then uses ComfyUI to generate images.
+    
+    Args:
+        request: Generation parameters including artist, style, genre, and optional user prompt
+        
+    Returns:
+        Generated images with the prompt used
+    """
+    try:
+        # Generate images using ComfyUI service
+        result = await generate_images_with_prompt(
+            artist_slug=request.artist_slug,
+            style_name=request.style_name,
+            genre_name=request.genre_name,
+            user_details=request.user_prompt,
+            count=request.count
+        )
+        
+        return GenerateResponse(
+            success=True,
+            prompt=result["prompt"],
+            images=[
+                GeneratedThumbnail(
+                    url=img["url"],
+                    artist_slug=request.artist_slug,
+                    prompt=result["prompt"]
+                )
+                for img in result["images"]
+            ],
+            message="Images generated successfully"
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Generation failed: {str(e)}"
         )

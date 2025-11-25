@@ -107,7 +107,25 @@ class AnalysisResponse(BaseModel):
     top_genres: List[GenrePrediction] = []
     top_styles: List[StylePrediction] = []
     explanation: AnalysisExplanation
-    generated_thumbnails: List[GeneratedThumbnail]
+    message: Optional[str] = None
+
+
+# ============ Generation Schemas ============
+
+class GenerateRequest(BaseModel):
+    """Request for image generation."""
+    artist_slug: str
+    style_name: Optional[str] = None
+    genre_name: Optional[str] = None
+    user_prompt: Optional[str] = None  # Additional details from user
+    count: int = Field(default=4, ge=1, le=8)
+
+
+class GenerateResponse(BaseModel):
+    """Response with generated images."""
+    success: bool = True
+    prompt: str  # The SD prompt that was used
+    images: List[GeneratedThumbnail]
     message: Optional[str] = None
 
 

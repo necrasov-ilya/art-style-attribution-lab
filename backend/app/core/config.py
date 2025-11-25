@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 512
     LLM_TEMPERATURE: float = 0.7
     
+    # ComfyUI Configuration
+    COMFYUI_BASE_URL: str = "http://127.0.0.1:8188"
+    COMFYUI_ENABLED: bool = True
+    COMFYUI_TIMEOUT: int = 120  # seconds
+    COMFYUI_CHECKPOINT: str = ""  # Leave empty to use workflow default
+    
+    # Workflows path
+    WORKFLOWS_DIR: Path = Path(__file__).parent.parent / "workflows"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

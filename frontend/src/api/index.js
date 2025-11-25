@@ -48,6 +48,11 @@ export const analysisAPI = {
       },
     })
   },
+  
+  generate: (data) => {
+    // data: { artist_slug, style_name?, genre_name?, user_prompt?, count? }
+    return api.post('/generate', data)
+  },
 }
 
 export default api
