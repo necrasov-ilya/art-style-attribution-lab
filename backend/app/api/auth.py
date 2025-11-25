@@ -1,4 +1,5 @@
 """Authentication API endpoints."""
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -55,5 +56,27 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
             detail="User account is disabled"
         )
     
+    access_token = create_user_token(user)
+    return Token(access_token=access_token)
+
+
+@router.post("/guest", response_model=Token)
+def guest_login(db: Session = Depends(get_db)):
+    """Create a guest account and login."""
+    # Generate unique guest credentials
+    guest_id = uuid.uuid4().hex[:8]
+    guest_email = f"guest_{guest_id}@example.com"
+    guest_username = f"Guest_{guest_id}"
+    guest_password = f"guest_{guest_id}_pass"
+    
+    # Create guest user
+    user_data = UserCreate(
+        email=guest_email,
+        username=guest_username,
+        password=guest_password
+    )
+    user = create_user(db, user_data)
+    
+    # Generate token
     access_token = create_user_token(user)
     return Token(access_token=access_token)

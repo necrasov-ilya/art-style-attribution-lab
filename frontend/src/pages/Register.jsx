@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authAPI } from '../api'
+import { 
+  Mail,
+  Lock,
+  User,
+  UserPlus
+} from 'lucide-react'
 
 function Register() {
   const [formData, setFormData] = useState({
@@ -25,12 +31,12 @@ function Register() {
     setError('')
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match')
+      setError('Пароли не совпадают')
       return
     }
 
     if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters')
+      setError('Пароль должен содержать минимум 6 символов')
       return
     }
 
@@ -43,10 +49,10 @@ function Register() {
         password: formData.password,
       })
       navigate('/login', { 
-        state: { message: 'Registration successful! Please sign in.' } 
+        state: { message: 'Регистрация успешна! Войдите в свой аккаунт.' } 
       })
     } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed. Please try again.')
+      setError(err.response?.data?.detail || 'Ошибка регистрации. Попробуйте снова.')
     } finally {
       setLoading(false)
     }
@@ -54,15 +60,23 @@ function Register() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
-        <h1 className="auth-title">Create Account</h1>
-        <p className="auth-subtitle">Join Art Style Attribution Lab</p>
+      <div className="auth-card-centered">
+        <div className="auth-header-centered">
+          <img 
+            src="/images/logo.png" 
+            alt="Heritage Frame Logo" 
+            className="auth-logo-centered"
+          />
+          <h1 className="auth-app-name">Heritage Frame</h1>
+          <p className="auth-title-centered">Создать аккаунт</p>
+        </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error" style={{width: '100%'}}>{error}</div>}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} style={{width: '100%'}}>
           <div className="form-group">
             <label className="form-label" htmlFor="email">
+              <Mail size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />
               Email
             </label>
             <input
@@ -79,14 +93,15 @@ function Register() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="username">
-              Username
+              <User size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+              Имя пользователя
             </label>
             <input
               type="text"
               id="username"
               name="username"
               className="form-input"
-              placeholder="johndoe"
+              placeholder="username"
               value={formData.username}
               onChange={handleChange}
               required
@@ -96,7 +111,8 @@ function Register() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="password">
-              Password
+              <Lock size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+              Пароль
             </label>
             <input
               type="password"
@@ -113,7 +129,8 @@ function Register() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="confirmPassword">
-              Confirm Password
+              <Lock size={16} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+              Подтвердите пароль
             </label>
             <input
               type="password"
@@ -135,16 +152,19 @@ function Register() {
             {loading ? (
               <>
                 <span className="loading-spinner" />
-                &nbsp;Creating account...
+                &nbsp;Создание аккаунта...
               </>
             ) : (
-              'Create Account'
+              <>
+                <UserPlus size={18} style={{ marginRight: 8 }} />
+                Зарегистрироваться
+              </>
             )}
           </button>
         </form>
 
         <p className="auth-link">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>
       </div>
     </div>
