@@ -138,18 +138,28 @@ async def analyze_image(
             message="Analysis completed successfully"
         )
         
-        # Save to history (only for non-guest users)
+        # Save to history (skip for guest users)
         try:
-            history_item = AnalysisHistory(
-                user_id=current_user.id,
-                image_filename=unique_filename,
-                image_url=f"/api/uploads/{unique_filename}",
-                top_artist_slug=top_artists[0].artist_slug if top_artists else "unknown",
-                top_artist_probability=f"{top_artists[0].probability:.3f}" if top_artists else None,
-                analysis_result=response.model_dump(),
-            )
-            db.add(history_item)
-            db.commit()
+            is_guest = False
+            try:
+                uname = (current_user.username or '').lower()
+                email = (current_user.email or '').lower()
+                if uname.startswith('guest_') or email.startswith('guest_'):
+                    is_guest = True
+            except Exception:
+                is_guest = False
+
+            if not is_guest:
+                history_item = AnalysisHistory(
+                    user_id=current_user.id,
+                    image_filename=unique_filename,
+                    image_url=f"/api/uploads/{unique_filename}",
+                    top_artist_slug=top_artists[0].artist_slug if top_artists else "unknown",
+                    top_artist_probability=f"{top_artists[0].probability:.3f}" if top_artists else None,
+                    analysis_result=response.model_dump(),
+                )
+                db.add(history_item)
+                db.commit()
         except Exception as save_error:
             # Don't fail the whole request if history save fails
             db.rollback()

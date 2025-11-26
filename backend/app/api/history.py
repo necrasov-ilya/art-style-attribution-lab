@@ -35,6 +35,14 @@ async def get_history(
     Returns list of previous analyses for the current user.
     """
     try:
+        # If this is a guest account (created via /auth/guest) we return empty history
+        try:
+            uname = (current_user.username or '').lower()
+            email = (current_user.email or '').lower()
+            if uname.startswith('guest_') or email.startswith('guest_'):
+                return HistoryListResponse(success=True, items=[], total=0)
+        except Exception:
+            pass
         # Get total count
         total = db.query(AnalysisHistory).filter(
             AnalysisHistory.user_id == current_user.id
