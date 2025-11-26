@@ -83,6 +83,95 @@ export const deepAnalysisAPI = {
     api.get('/deep-analysis/full', { params: { image_path: imagePath } }),
   
   /**
+   * Stream deep analysis with progress updates via SSE
+   * @param {string} imagePath - Path to image
+   * @param {object} callbacks - Event callbacks: onStep, onData, onText, onComplete, onError
+   * @returns {function} Cleanup function to close the connection
+   */
+  analyzeStream: (imagePath, { onStep, onData, onText, onComplete, onError }) => {
+    const token = localStorage.getItem('token')
+    const url = new URL(`${window.location.origin}/api/deep-analysis/stream`)
+    url.searchParams.set('image_path', imagePath)
+    
+    // EventSource doesn't support custom headers, so we use fetch with ReadableStream
+    const controller = new AbortController()
+    
+    const fetchStream = async () => {
+      try {
+        const response = await fetch(url.toString(), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'text/event-stream',
+          },
+          signal: controller.signal,
+        })
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+        
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          
+          // Parse SSE events from buffer
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || '' // Keep incomplete line in buffer
+          
+          let currentEvent = null
+          let currentData = ''
+          
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7).trim()
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6)
+            } else if (line === '' && currentEvent && currentData) {
+              // End of event
+              try {
+                const data = JSON.parse(currentData)
+                
+                if (currentEvent === 'step' && onStep) {
+                  onStep(data)
+                } else if (currentEvent === 'data' && onData) {
+                  onData(data)
+                } else if (currentEvent === 'text' && onText) {
+                  // LLM text streaming chunks
+                  onText(data)
+                } else if (currentEvent === 'complete' && onComplete) {
+                  onComplete(data)
+                } else if (currentEvent === 'error' && onError) {
+                  onError(data.message || 'Unknown error')
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE data:', e, currentData)
+              }
+              
+              currentEvent = null
+              currentData = ''
+            }
+          }
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError' && onError) {
+          onError(error.message)
+        }
+      }
+    }
+    
+    fetchStream()
+    
+    // Return cleanup function
+    return () => controller.abort()
+  },
+  
+  /**
    * Get raw color features without LLM interpretation
    * @param {string} imagePath - Path to image
    */

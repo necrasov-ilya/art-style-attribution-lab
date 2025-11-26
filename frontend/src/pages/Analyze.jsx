@@ -286,6 +286,7 @@ function Analyze() {
   const [deepAnalysisStep, setDeepAnalysisStep] = useState(0)
   const [deepAnalysisResults, setDeepAnalysisResults] = useState(null)
   const [deepAnalysisError, setDeepAnalysisError] = useState('')
+  const [streamingText, setStreamingText] = useState('') // For LLM streaming output
   
   // Current history item id (for saving deep analysis)
   const [currentHistoryItemId, setCurrentHistoryItemId] = useState(null)
@@ -377,6 +378,9 @@ function Analyze() {
     }
   }
 
+  // Store streaming cleanup function
+  const streamCleanupRef = useRef(null)
+
   const handleDeepAnalysis = async () => {
     if (!result?.image_path) return
     
@@ -384,54 +388,93 @@ function Analyze() {
     setDeepAnalysisStep(0)
     setDeepAnalysisError('')
     setDeepAnalysisResults(null)
+    setStreamingText('')
     
-    try {
-      // Simulate step progression for UX (actual API does all at once)
-      const stepInterval = setInterval(() => {
-        setDeepAnalysisStep(prev => Math.min(prev + 1, DEEP_ANALYSIS_STEPS.length - 1))
-      }, 2000)
-      
-      const response = await deepAnalysisAPI.analyzeFull(result.image_path)
-      
-      clearInterval(stepInterval)
-      setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
-      setDeepAnalysisResults(response.data)
-      
-      // Save deep analysis to history for authenticated users
-      if (!isGuest && currentHistoryItemId) {
-        try {
-          await historyAPI.updateDeepAnalysis(currentHistoryItemId, response.data)
-          loadHistory() // Refresh history
-        } catch (saveErr) {
-          console.warn('Failed to save deep analysis to history:', saveErr)
+    // Use streaming API for real-time progress
+    const cleanup = deepAnalysisAPI.analyzeStream(result.image_path, {
+      onStep: (data) => {
+        // Update step progress with real data
+        if (data.status === 'running') {
+          setDeepAnalysisStep(data.index)
+          setStreamingText('') // Clear text when new step starts
+        } else if (data.status === 'complete') {
+          setDeepAnalysisStep(data.index + 1)
         }
-      } else if (!isGuest && !currentHistoryItemId) {
-        // If no currentHistoryItemId, try to find it from the latest history item
-        try {
-          const historyRes = await historyAPI.getAll(1, 0)
-          const latestItem = historyRes.data.items?.[0]
-          if (latestItem && latestItem.image_url === result.image_path) {
-            setCurrentHistoryItemId(latestItem.id)
-            await historyAPI.updateDeepAnalysis(latestItem.id, response.data)
+      },
+      onData: (data) => {
+        // Accumulate partial results for live preview
+        setDeepAnalysisResults(prev => ({
+          ...prev,
+          [data.step]: data.result,
+          // Merge feature data
+          ...(data.result?.color_features ? { color_features: data.result.color_features } : {}),
+          ...(data.result?.composition_features ? { composition_features: data.result.composition_features } : {}),
+        }))
+        setStreamingText('') // Clear streaming text when step data arrives
+      },
+      onText: (data) => {
+        // Stream LLM text as it arrives (for any step)
+        if (data.chunk) {
+          setStreamingText(prev => prev + data.chunk)
+        }
+      },
+      onComplete: async (data) => {
+        setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
+        setDeepAnalysisResults(data)
+        setStreamingText('') // Clear streaming text, use final parsed result
+        setDeepAnalysisActive(false)
+        
+        // Save deep analysis to history for authenticated users
+        if (!isGuest && currentHistoryItemId) {
+          try {
+            await historyAPI.updateDeepAnalysis(currentHistoryItemId, data)
             loadHistory()
+          } catch (saveErr) {
+            console.warn('Failed to save deep analysis to history:', saveErr)
           }
-        } catch (e) {
-          console.warn('Could not save deep analysis to history:', e)
+        } else if (!isGuest && !currentHistoryItemId) {
+          try {
+            const historyRes = await historyAPI.getAll(1, 0)
+            const latestItem = historyRes.data.items?.[0]
+            if (latestItem && latestItem.image_url === result.image_path) {
+              setCurrentHistoryItemId(latestItem.id)
+              await historyAPI.updateDeepAnalysis(latestItem.id, data)
+              loadHistory()
+            }
+          } catch (e) {
+            console.warn('Could not save deep analysis to history:', e)
+          }
         }
+      },
+      onError: (message) => {
+        console.error('Deep analysis failed:', message)
+        setDeepAnalysisError(message || 'Ошибка глубокого анализа')
+        setDeepAnalysisActive(false)
       }
-      
-    } catch (err) {
-      console.error('Deep analysis failed:', err)
-      setDeepAnalysisError(err.response?.data?.detail || 'Ошибка глубокого анализа')
-      setDeepAnalysisActive(false)
-    }
+    })
+    
+    streamCleanupRef.current = cleanup
   }
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamCleanupRef.current) {
+        streamCleanupRef.current()
+      }
+    }
+  }, [])
+
   const resetDeepAnalysis = () => {
+    if (streamCleanupRef.current) {
+      streamCleanupRef.current()
+      streamCleanupRef.current = null
+    }
     setDeepAnalysisActive(false)
     setDeepAnalysisStep(0)
     setDeepAnalysisResults(null)
     setDeepAnalysisError('')
+    setStreamingText('')
   }
 
   const handleGenerate = async () => {
@@ -819,8 +862,8 @@ function Analyze() {
                   )}
                   
                   {/* Analysis In Progress */}
-                  {deepAnalysisActive && !deepAnalysisResults && (
-                    <div className="border border-gold-500/30 bg-gold-500/5 p-8 rounded-xl">
+                  {deepAnalysisActive && (
+                    <div className="border border-gold-500/30 bg-gold-500/5 p-8 rounded-xl mb-6">
                       {/* Progress Steps */}
                       <div className="mb-8">
                         <div className="flex justify-between mb-4">
@@ -851,23 +894,153 @@ function Analyze() {
                         </div>
                       </div>
                       
-                      <div className="text-center py-8">
-                        <Loader2 className="w-10 h-10 text-gold-500 animate-spin mx-auto mb-6" />
-                        <p className="text-gold-200 font-serif text-2xl animate-pulse">
-                          {DEEP_ANALYSIS_STEPS[Math.min(deepAnalysisStep, DEEP_ANALYSIS_STEPS.length - 1)]?.label}...
-                        </p>
-                        <p className="text-gray-500 text-sm mt-2">
-                          Выполняется многоэтапный анализ с использованием ИИ
-                        </p>
-                      </div>
+                      {/* Current step indicator - smaller when streaming */}
+                      {!streamingText && (
+                        <div className="text-center py-4">
+                          <Loader2 className="w-10 h-10 text-gold-500 animate-spin mx-auto mb-4" />
+                          <p className="text-gold-200 font-serif text-2xl animate-pulse">
+                            {DEEP_ANALYSIS_STEPS[Math.min(deepAnalysisStep, DEEP_ANALYSIS_STEPS.length - 1)]?.label}...
+                          </p>
+                          <p className="text-gray-500 text-sm mt-2">
+                            Выполняется многоэтапный анализ с использованием ИИ
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Live preview of color palette during analysis */}
+                      {deepAnalysisResults?.color_features?.dominant_colors && (
+                        <motion.div 
+                          className="mt-6 pt-6 border-t border-white/10"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <div className="flex items-center gap-3 mb-3">
+                            <Palette className="w-4 h-4 text-gold-400" />
+                            <span className="text-xs text-gray-400 uppercase tracking-wider">Цветовая палитра</span>
+                          </div>
+                          <div className="flex h-12 rounded-lg overflow-hidden shadow-lg border border-white/10">
+                            {deepAnalysisResults.color_features.dominant_colors.map((color, i) => (
+                              <motion.div 
+                                key={i}
+                                className="flex-1"
+                                style={{ backgroundColor: color.hex }}
+                                title={color.hex}
+                                initial={{ opacity: 0, scaleX: 0 }}
+                                animate={{ opacity: 1, scaleX: 1 }}
+                                transition={{ delay: i * 0.05, duration: 0.3 }}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                      
+                      {/* Live streaming text preview with fade top */}
+                      <AnimatePresence mode="wait">
+                        {streamingText && (
+                          <motion.div 
+                            key={deepAnalysisStep}
+                            className="mt-6 pt-6 border-t border-white/10"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {/* Check if model is thinking (has unclosed <think> tag) */}
+                            {(() => {
+                              const isThinking = streamingText.includes('<think') && !streamingText.includes('</think>');
+                              const thinkMatch = streamingText.match(/<think[^>]*>([\s\S]*?)(?:<\/think>|$)/);
+                              const thinkContent = thinkMatch ? thinkMatch[1] : '';
+                              const visibleText = streamingText.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '').replace(/<think[^>]*>[\s\S]*$/gi, '').trim();
+                              
+                              return (
+                                <>
+                                  {/* Thinking indicator */}
+                                  {isThinking && (
+                                    <motion.div 
+                                      className="mb-4 p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center gap-3"
+                                      initial={{ opacity: 0, scale: 0.95 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      transition={{ duration: 0.2 }}
+                                    >
+                                      <motion.div
+                                        animate={{ rotate: 360 }}
+                                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                                      >
+                                        <Search className="w-5 h-5 text-purple-400" />
+                                      </motion.div>
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-purple-300 text-sm font-medium">Размышляю...</span>
+                                          <motion.span 
+                                            className="text-purple-400"
+                                            animate={{ opacity: [1, 0.3, 1] }}
+                                            transition={{ duration: 1.5, repeat: Infinity }}
+                                          >
+                                            ●●●
+                                          </motion.span>
+                                        </div>
+                                        {thinkContent && (
+                                          <p className="text-purple-400/60 text-xs line-clamp-2 italic">
+                                            {thinkContent.slice(-150)}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                  
+                                  {/* Main content header */}
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <motion.div
+                                      animate={{ rotate: isThinking ? 0 : 360 }}
+                                      transition={{ duration: 2, repeat: isThinking ? 0 : Infinity, ease: "linear" }}
+                                    >
+                                      <Sparkles className={`w-4 h-4 ${isThinking ? 'text-purple-400' : 'text-gold-400'}`} />
+                                    </motion.div>
+                                    <span className="text-xs text-gray-400 uppercase tracking-wider">
+                                      {DEEP_ANALYSIS_STEPS[Math.min(deepAnalysisStep, DEEP_ANALYSIS_STEPS.length - 1)]?.label}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Container with max height and fade overlay */}
+                                  <div className="relative">
+                                    {/* Fade overlay at top when content is tall */}
+                                    <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" 
+                                         style={{ opacity: visibleText.length > 500 ? 1 : 0 }} />
+                                    
+                                    <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gold-500/30 scrollbar-track-transparent pr-2"
+                                         style={{ maskImage: visibleText.length > 500 ? 'linear-gradient(to bottom, transparent 0%, black 48px, black 100%)' : 'none' }}>
+                                      {visibleText ? (
+                                        <div className="prose prose-invert prose-sm max-w-none opacity-90">
+                                          <ReactMarkdown>{visibleText}</ReactMarkdown>
+                                        </div>
+                                      ) : isThinking ? (
+                                        <div className="text-gray-500 text-sm italic">
+                                          Анализирую данные...
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    
+                                    {/* Blinking cursor */}
+                                    {(visibleText || !isThinking) && (
+                                      <span className="inline-block w-2 h-5 bg-gold-400 animate-pulse ml-1 align-middle"></span>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   )}
                   
-                  {/* Analysis Complete - Show ONLY Summary */}
-                  {deepAnalysisResults && (
+                  {/* Analysis Complete - Show Results */}
+                  {deepAnalysisResults && !deepAnalysisActive && (
                     <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5 }}
                     >
                       {/* Color Palette Moodboard */}
                       {deepAnalysisResults.color_features?.dominant_colors && (
@@ -878,16 +1051,19 @@ function Analyze() {
                           </div>
                           <div className="flex h-16 rounded-xl overflow-hidden shadow-lg border border-white/10">
                             {deepAnalysisResults.color_features.dominant_colors.map((color, i) => (
-                              <div 
+                              <motion.div 
                                 key={i}
                                 className="flex-1 relative group cursor-pointer transition-all hover:flex-[1.5]"
                                 style={{ backgroundColor: color.hex }}
                                 title={`${color.name}: ${color.hex} (${(color.percentage * 100).toFixed(1)}%)`}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: i * 0.05 }}
                               >
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
                                   <span className="text-white text-xs font-mono">{color.hex}</span>
                                 </div>
-                              </div>
+                              </motion.div>
                             ))}
                           </div>
                         </div>

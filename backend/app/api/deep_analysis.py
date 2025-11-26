@@ -1,9 +1,11 @@
 """Deep Analysis API endpoints."""
+import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -16,6 +18,7 @@ from app.models.schemas import (
 from app.services.deep_analysis_service import (
     run_single_module_analysis,
     run_full_deep_analysis,
+    run_deep_analysis_streaming,
 )
 from app.services.classifier import get_full_predictions
 
@@ -179,6 +182,57 @@ async def run_full_analysis(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+
+
+@router.get("/stream")
+async def stream_deep_analysis(
+    image_path: str = Query(..., description="Path to the image (from /api/uploads/...)"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Stream deep analysis progress via Server-Sent Events (SSE).
+    
+    Sends events as each analysis step completes:
+    - step: {step_name, step_index, total_steps, status}
+    - data: {step_name, result} - contains actual analysis data
+    - complete: {full_result} - final result with all data
+    - error: {message} - if something fails
+    
+    This allows the frontend to show real progress and intermediate results.
+    """
+    try:
+        resolved_path = resolve_image_path(image_path)
+    except HTTPException as e:
+        async def error_stream():
+            yield f"event: error\ndata: {json.dumps({'message': e.detail})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+    
+    # Get ML predictions
+    ml_predictions = None
+    try:
+        ml_predictions = get_full_predictions(resolved_path)
+    except Exception as e:
+        logger.warning(f"Could not get ML predictions: {e}")
+    
+    async def event_stream() -> AsyncGenerator[str, None]:
+        try:
+            async for event in run_deep_analysis_streaming(resolved_path, ml_predictions):
+                event_type = event.get("type", "data")
+                event_data = json.dumps(event.get("data", {}), ensure_ascii=False, default=str)
+                yield f"event: {event_type}\ndata: {event_data}\n\n"
+        except Exception as e:
+            logger.error(f"Streaming analysis failed: {e}")
+            yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
 
 
 @router.get(

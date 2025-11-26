@@ -13,7 +13,7 @@ import json
 import logging
 import math
 import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, AsyncGenerator
 from pathlib import Path
 
 import numpy as np
@@ -769,6 +769,57 @@ def extract_scene_features(image_path: str) -> Dict[str, Any]:
     }
 
 
+# ============ LLM Streaming Helper ============
+
+async def stream_llm_response(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 2500,
+    temperature: float = 0.7
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream LLM response, yielding text chunks.
+    
+    Yields:
+        {"type": "chunk", "text": "..."} for each chunk
+        {"type": "done", "text": "full response"} when complete
+    """
+    from app.services.llm_client import OllamaProvider
+    
+    if settings.LLM_PROVIDER.lower() != "ollama":
+        # Non-streaming fallback
+        provider = get_cached_provider()
+        response = await provider.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        cleaned = clean_think_tags(response)
+        yield {"type": "chunk", "text": cleaned}
+        yield {"type": "done", "text": cleaned}
+        return
+    
+    try:
+        provider = OllamaProvider()
+        full_text = ""
+        
+        async for chunk in provider.generate_stream(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature
+        ):
+            full_text += chunk
+            yield {"type": "chunk", "text": chunk}
+        
+        cleaned = clean_think_tags(full_text)
+        yield {"type": "done", "text": cleaned}
+        
+    except Exception as e:
+        logger.error(f"LLM streaming failed: {e}")
+        yield {"type": "done", "text": ""}
+
+
 # ============ LLM Integration ============
 
 async def analyze_color_psychology(color_features: Dict[str, Any]) -> Dict[str, Any]:
@@ -1100,6 +1151,72 @@ async def generate_summary(
         return parse_inline_markers(raw_summary)
 
 
+async def generate_summary_streaming(
+    color_analysis: Dict,
+    composition_analysis: Dict,
+    scene_analysis: Dict,
+    technique_analysis: Dict,
+    historical_analysis: Dict,
+    ml_predictions: Dict
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Generate summary with streaming - yields text chunks as they arrive.
+    
+    Yields:
+        {"type": "chunk", "text": "..."} for each text chunk
+        {"type": "done", "result": {...}} when complete with parsed markers
+    """
+    from app.services.llm_client import OllamaProvider
+    
+    if settings.LLM_PROVIDER.lower() == "none":
+        raw_summary = _build_stub_summary(ml_predictions)
+        yield {"type": "chunk", "text": raw_summary}
+        yield {"type": "done", "result": parse_inline_markers(raw_summary)}
+        return
+    
+    if settings.LLM_PROVIDER.lower() != "ollama":
+        # Non-Ollama providers - fall back to non-streaming
+        result = await generate_summary(
+            color_analysis, composition_analysis, scene_analysis,
+            technique_analysis, historical_analysis, ml_predictions
+        )
+        if result.get("raw_text"):
+            yield {"type": "chunk", "text": result["raw_text"]}
+        yield {"type": "done", "result": result}
+        return
+    
+    try:
+        provider = OllamaProvider()
+        user_prompt = build_summary_prompt(
+            color_analysis,
+            composition_analysis,
+            scene_analysis,
+            technique_analysis,
+            historical_analysis,
+            ml_predictions
+        )
+        
+        full_text = ""
+        async for chunk in provider.generate_stream(
+            system_prompt=DEEP_ANALYSIS_SUMMARY_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            max_tokens=8000,
+            temperature=0.75
+        ):
+            full_text += chunk
+            yield {"type": "chunk", "text": chunk}
+        
+        # Clean and parse final result
+        cleaned_text = clean_think_tags(full_text)
+        parsed_result = parse_inline_markers(cleaned_text)
+        yield {"type": "done", "result": parsed_result}
+        
+    except LLMError as e:
+        logger.error(f"LLM streaming summary failed: {e}")
+        raw_summary = _build_stub_summary(ml_predictions)
+        yield {"type": "chunk", "text": raw_summary}
+        yield {"type": "done", "result": parse_inline_markers(raw_summary)}
+
+
 def _build_stub_summary(ml_predictions: Dict) -> str:
     """Build stub summary with example markers (single braces)."""
     artist = "неизвестный художник"
@@ -1283,3 +1400,194 @@ async def run_full_deep_analysis(
         "historical": historical_analysis,
         "summary": summary
     }
+
+
+# ============ Streaming Deep Analysis ============
+
+ANALYSIS_STEPS = [
+    {"key": "features", "name": "Извлечение признаков", "index": 0},
+    {"key": "color", "name": "Психология цвета", "index": 1},
+    {"key": "composition", "name": "Анализ композиции", "index": 2},
+    {"key": "scene", "name": "Сюжетный анализ", "index": 3},
+    {"key": "technique", "name": "Техника исполнения", "index": 4},
+    {"key": "historical", "name": "Исторический контекст", "index": 5},
+    {"key": "summary", "name": "Синтез результатов", "index": 6},
+]
+
+
+async def run_deep_analysis_streaming(
+    image_path: str,
+    ml_predictions: Dict = None
+):
+    """
+    Run deep analysis with streaming progress updates.
+    
+    Yields events as each step completes:
+    - {"type": "step", "data": {"step": name, "index": n, "total": 7, "status": "running"}}
+    - {"type": "data", "data": {"step": name, "result": {...}}}
+    - {"type": "complete", "data": {full_result}}
+    
+    Args:
+        image_path: Path to image file
+        ml_predictions: ML predictions from classifier
+        
+    Yields:
+        Event dicts for SSE streaming
+    """
+    ml_prompt_data = prepare_ml_predictions_for_prompt(ml_predictions) if ml_predictions else None
+    total_steps = len(ANALYSIS_STEPS)
+    
+    # Accumulate results
+    results = {}
+    
+    # Step 1: Feature extraction (no LLM, no streaming needed)
+    step = ANALYSIS_STEPS[0]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 0, "total": total_steps, "status": "running"}}
+    
+    color_features = extract_color_features(image_path)
+    composition_features = extract_composition_features(image_path)
+    scene_features = await extract_scene_features_with_vision(image_path)
+    
+    results["color_features"] = color_features
+    results["composition_features"] = composition_features
+    results["scene_features"] = scene_features
+    
+    yield {"type": "data", "data": {
+        "step": step["key"],
+        "result": {
+            "color_features": color_features,
+            "composition_features": composition_features,
+        }
+    }}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 0, "total": total_steps, "status": "complete"}}
+    
+    # Step 2: Color psychology (with streaming)
+    step = ANALYSIS_STEPS[1]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 1, "total": total_steps, "status": "running"}}
+    
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        user_prompt = build_color_psychology_prompt(color_features)
+        async for event in stream_llm_response(COLOR_PSYCHOLOGY_SYSTEM_PROMPT, user_prompt, 2500, 0.7):
+            if event["type"] == "chunk":
+                yield {"type": "text", "data": {"step": step["key"], "chunk": event["text"]}}
+            elif event["type"] == "done":
+                parsed = extract_json_from_response(event["text"])
+                color_analysis = parsed if parsed else {"raw_text": event["text"], "source": "ollama"}
+    else:
+        color_analysis = await analyze_color_psychology(color_features)
+    results["color"] = color_analysis
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": color_analysis}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 1, "total": total_steps, "status": "complete"}}
+    
+    # Step 3: Composition (with streaming)
+    step = ANALYSIS_STEPS[2]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 2, "total": total_steps, "status": "running"}}
+    
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        user_prompt = build_composition_prompt(composition_features)
+        async for event in stream_llm_response(COMPOSITION_ANALYSIS_SYSTEM_PROMPT, user_prompt, 2500, 0.7):
+            if event["type"] == "chunk":
+                yield {"type": "text", "data": {"step": step["key"], "chunk": event["text"]}}
+            elif event["type"] == "done":
+                parsed = extract_json_from_response(event["text"])
+                composition_analysis = parsed if parsed else {"raw_text": event["text"], "source": "ollama"}
+    else:
+        composition_analysis = await analyze_composition(composition_features)
+    results["composition"] = composition_analysis
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": composition_analysis}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 2, "total": total_steps, "status": "complete"}}
+    
+    # Step 4: Scene analysis (with streaming)
+    step = ANALYSIS_STEPS[3]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 3, "total": total_steps, "status": "running"}}
+    
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        user_prompt = build_scene_prompt(scene_features, ml_prompt_data)
+        async for event in stream_llm_response(SCENE_ANALYSIS_SYSTEM_PROMPT, user_prompt, 3000, 0.7):
+            if event["type"] == "chunk":
+                yield {"type": "text", "data": {"step": step["key"], "chunk": event["text"]}}
+            elif event["type"] == "done":
+                parsed = extract_json_from_response(event["text"])
+                scene_analysis = parsed if parsed else {"raw_text": event["text"], "source": "ollama"}
+    else:
+        scene_analysis = await analyze_scene(scene_features, ml_prompt_data)
+    results["scene"] = scene_analysis
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": scene_analysis}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 3, "total": total_steps, "status": "complete"}}
+    
+    # Step 5: Technique (with streaming)
+    step = ANALYSIS_STEPS[4]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 4, "total": total_steps, "status": "running"}}
+    
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        user_prompt = build_technique_prompt(ml_prompt_data, color_features, composition_features)
+        async for event in stream_llm_response(TECHNIQUE_ANALYSIS_SYSTEM_PROMPT, user_prompt, 3000, 0.7):
+            if event["type"] == "chunk":
+                yield {"type": "text", "data": {"step": step["key"], "chunk": event["text"]}}
+            elif event["type"] == "done":
+                parsed = extract_json_from_response(event["text"])
+                technique_analysis = parsed if parsed else {"raw_text": event["text"], "source": "ollama"}
+    else:
+        technique_analysis = await analyze_technique(ml_prompt_data, color_features, composition_features)
+    results["technique"] = technique_analysis
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": technique_analysis}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 4, "total": total_steps, "status": "complete"}}
+    
+    # Step 6: Historical context (with streaming)
+    step = ANALYSIS_STEPS[5]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 5, "total": total_steps, "status": "running"}}
+    
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        user_prompt = build_historical_context_prompt(
+            ml_prompt_data, color_analysis, composition_analysis, scene_analysis, technique_analysis
+        )
+        async for event in stream_llm_response(HISTORICAL_CONTEXT_SYSTEM_PROMPT, user_prompt, 3000, 0.7):
+            if event["type"] == "chunk":
+                yield {"type": "text", "data": {"step": step["key"], "chunk": event["text"]}}
+            elif event["type"] == "done":
+                parsed = extract_json_from_response(event["text"])
+                historical_analysis = parsed if parsed else {"raw_text": event["text"], "source": "ollama"}
+    else:
+        historical_analysis = await analyze_historical_context(
+            ml_prompt_data,
+            color_analysis,
+            composition_analysis,
+            scene_analysis,
+            technique_analysis
+        )
+    results["historical"] = historical_analysis
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": historical_analysis}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 5, "total": total_steps, "status": "complete"}}
+    
+    # Step 7: Summary synthesis with streaming
+    step = ANALYSIS_STEPS[6]
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 6, "total": total_steps, "status": "running"}}
+    
+    # Stream summary text chunks
+    summary = None
+    async for chunk_event in generate_summary_streaming(
+        color_analysis,
+        composition_analysis,
+        scene_analysis,
+        technique_analysis,
+        historical_analysis,
+        ml_prompt_data or {}
+    ):
+        if chunk_event["type"] == "chunk":
+            # Send text chunk for live display
+            yield {"type": "text", "data": {"step": step["key"], "chunk": chunk_event["text"]}}
+        elif chunk_event["type"] == "done":
+            summary = chunk_event["result"]
+    
+    results["summary"] = summary
+    
+    yield {"type": "data", "data": {"step": step["key"], "result": summary}}
+    yield {"type": "step", "data": {"step": step["name"], "key": step["key"], "index": 6, "total": total_steps, "status": "complete"}}
+    
+    # Final complete event with all results
+    yield {"type": "complete", "data": results}

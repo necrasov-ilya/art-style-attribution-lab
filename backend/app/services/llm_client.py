@@ -4,11 +4,12 @@ This module provides a unified interface for LLM calls regardless of the provide
 Provider is selected via LLM_PROVIDER environment variable.
 """
 import base64
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional, List, Union, AsyncGenerator
 
 import httpx
 
@@ -214,6 +215,54 @@ class OllamaProvider(LLMProvider):
             except Exception as e:
                 logger.error(f"Ollama request failed: {e}")
                 raise LLMError(f"Ollama request failed: {str(e)}")
+    
+    async def generate_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 512,
+        temperature: float = 0.7
+    ) -> AsyncGenerator[str, None]:
+        """Generate response with streaming - yields text chunks as they arrive."""
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            try:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/api/chat",
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "stream": True,
+                        "options": {
+                            "num_predict": max_tokens,
+                            "temperature": temperature
+                        }
+                    }
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                if "message" in data and "content" in data["message"]:
+                                    chunk = data["message"]["content"]
+                                    if chunk:
+                                        yield chunk
+                            except json.JSONDecodeError:
+                                continue
+                                
+            except httpx.ConnectError:
+                logger.error(f"Cannot connect to Ollama at {self.base_url}")
+                raise LLMError(f"Cannot connect to Ollama. Is it running at {self.base_url}?")
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Ollama API error: {e.response.status_code}")
+                raise LLMError(f"Ollama API error: {e.response.status_code}")
+            except Exception as e:
+                logger.error(f"Ollama streaming request failed: {e}")
+                raise LLMError(f"Ollama streaming request failed: {str(e)}")
 
 
 class StubProvider(LLMProvider):
