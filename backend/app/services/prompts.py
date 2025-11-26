@@ -5,17 +5,24 @@ Prompts are centralized here for easy maintenance and versioning.
 """
 
 # System prompt defines the role and behavior of the LLM
-SYSTEM_PROMPT = """You are an expert art historian and critic with deep knowledge of artistic styles, techniques, and art history. 
+SYSTEM_PROMPT = """You are an expert art historian. Respond ONLY in Russian with Markdown formatting (##, ###, -, **). Maximum 250 words.
 
-Your task is to provide insightful, educational analysis of artworks based on ML classification results. 
-Be concise but informative. Focus on specific visual elements that connect the artwork to identified styles and artists.
+Format:
+## 🎨 Художественный анализ
+[1-2 sentences about main similarity]
 
-Guidelines:
-- Use professional but accessible language
-- Reference specific artistic techniques (brushwork, composition, color palette, etc.)
-- Provide historical context when relevant
-- Be confident but acknowledge uncertainty when probabilities are low
-- Keep responses under 200 words"""
+### Ключевые характеристики
+- **Техника**: [technique]
+- **Палитра**: [colors]
+- **Композиция**: [composition]
+
+### Влияние мастеров
+**[Artist 1]** (XX%): [similarity]
+**[Artist 2]** (XX%): [similarity]
+**[Artist 3]** (XX%): [similarity]
+
+### Историко-художественный контекст
+[1-2 sentences about style/era]"""
 
 
 def build_analysis_prompt(
@@ -33,43 +40,33 @@ def build_analysis_prompt(
     Returns:
         Formatted prompt string for the LLM
     """
-    # Format artists section
-    artists_text = "\n".join([
-        f"  - {a['name']}: {a['probability']:.1%} confidence"
-        for a in artists
-    ]) if artists else "  No artists identified"
+    # Format artists section with emphasis on all 3
+    artists_text = ""
+    for i, a in enumerate(artists[:3], 1):
+        artists_text += f"  {i}. **{a['name']}** — уверенность {a['probability']:.1%}\n"
+    if not artists_text:
+        artists_text = "  Художники не определены"
     
     # Format genres section  
     genres_text = "\n".join([
-        f"  - {g['name']}: {g['probability']:.1%} confidence"
-        for g in genres
-    ]) if genres else "  No genres identified"
+        f"  - {g['name']}: {g['probability']:.1%}"
+        for g in genres[:2]
+    ]) if genres else "  Жанр не определён"
     
     # Format styles section
     styles_text = "\n".join([
-        f"  - {s['name']}: {s['probability']:.1%} confidence"
-        for s in styles
-    ]) if styles else "  No styles identified"
+        f"  - {s['name']}: {s['probability']:.1%}"
+        for s in styles[:2]
+    ]) if styles else "  Стиль не определён"
     
-    prompt = f"""Analyze the following ML classification results for an artwork and provide a concise, insightful summary.
+    prompt = f"""Analyze ML classification results for artwork. Respond in Russian with Markdown.
 
-CLASSIFICATION RESULTS:
-
-Artists (stylistic similarity):
+ARTISTS (mention ALL THREE):
 {artists_text}
+GENRES: {genres_text}
+STYLES: {styles_text}
 
-Genres:
-{genres_text}
-
-Artistic Styles:
-{styles_text}
-
-Based on these results, provide:
-1. A brief interpretation of what these classifications tell us about the artwork
-2. Key visual characteristics that likely contributed to these classifications
-3. Historical/artistic context connecting the identified elements
-
-Keep your response focused and under 200 words."""
+Follow the format from system prompt. Max 250 words."""
 
     return prompt
 
@@ -95,39 +92,11 @@ def format_prediction_for_prompt(prediction: dict) -> dict:
 
 # ============ ComfyUI Image Generation Prompts ============
 
-IMAGE_GEN_SYSTEM_PROMPT = """You are an expert at creating Stable Diffusion prompts that capture artistic styles with rich, detailed descriptions.
+# System prompt for SD prompt generation - concise and direct
+IMAGE_GEN_SYSTEM_PROMPT = """You are a Stable Diffusion prompt generator. Output ONLY a comma-separated English prompt (80-120 words) with: subject, artistic techniques, colors, lighting, mood, quality tags. No explanations."""
 
-Your task is to generate a comprehensive, highly detailed prompt for generating artwork.
-The prompt must be extensive and include many visual descriptors.
-
-Output format - create ONE long comma-separated prompt with ALL these elements:
-1. Subject/scene description (detailed)
-2. Artistic technique keywords (brushwork, texture, medium)
-3. Color palette specifics
-4. Lighting and atmosphere
-5. Composition elements
-6. Style modifiers and quality tags
-
-Example output:
-"a serene mountain lake at golden hour, impressionist brushstrokes, visible paint texture, palette knife techniques, soft diffused lighting, warm golden and cool blue color harmony, reflections in still water, atmospheric perspective, misty distant peaks, en plein air painting style, masterpiece, museum quality, highly detailed, 8k"
-
-Output ONLY the prompt text, no explanations. Make it 80-120 words."""
-
-
-IMAGE_GEN_WITH_DETAILS_PROMPT = """You are an expert at creating Stable Diffusion prompts that capture artistic styles with rich detail.
-
-Transform the user's idea into a comprehensive Stable Diffusion prompt while preserving their concept.
-Create an extensive, detailed prompt with many visual descriptors.
-
-Output format - create ONE long comma-separated prompt including:
-1. User's subject (enhanced with details)
-2. Artistic technique keywords for the style
-3. Specific color palette
-4. Lighting and mood
-5. Composition and perspective
-6. Quality modifiers
-
-Output ONLY the prompt text, no explanations. Make it 80-120 words."""
+# System prompt when user provides their own idea
+IMAGE_GEN_WITH_DETAILS_PROMPT = """You are a Stable Diffusion prompt generator. Translate user's idea to English if needed. Output ONLY a comma-separated English prompt (80-120 words) preserving user's concept, adding: artistic techniques, colors, lighting, quality tags. No explanations."""
 
 
 # ============ Style Knowledge Base ============
@@ -319,7 +288,7 @@ def build_image_generation_prompt(
         artist_name: Name of the artist whose style to emulate
         style_name: Optional artistic style (e.g., "Impressionism")
         genre_name: Optional genre (e.g., "landscape", "portrait")
-        user_details: Optional user-provided scene description
+        user_details: Optional user-provided scene description (may be in Russian)
         
     Returns:
         Prompt for the LLM to generate an SD prompt
@@ -328,56 +297,26 @@ def build_image_generation_prompt(
     style_info = get_style_details(style_name) if style_name else {}
     genre_info = get_genre_details(genre_name) if genre_name else {}
     
-    # Build context sections
-    style_section = ""
-    if style_info:
-        style_section = f"""
-STYLE CHARACTERISTICS ({style_name}):
-- Techniques: {style_info.get('techniques', 'N/A')}
-- Color palette: {style_info.get('colors', 'N/A')}
-- Mood/atmosphere: {style_info.get('mood', 'N/A')}
-- Reference: {style_info.get('artists_ref', 'N/A')}"""
-
-    genre_section = ""
-    if genre_info:
-        genre_section = f"""
-GENRE ELEMENTS ({genre_name}):
-- Key elements: {genre_info.get('elements', 'N/A')}
-- Composition: {genre_info.get('composition', 'N/A')}"""
-
-    style_context = f" in the {style_name} style" if style_name else ""
-    genre_context = f" {genre_name}" if genre_name else " artwork"
+    # Build compact context
+    style_context = f", {style_name} style" if style_name else ""
+    genre_context = genre_name if genre_name else "artwork"
+    
+    # Build technique hints
+    techniques = style_info.get('techniques', '') if style_info else ''
+    colors = style_info.get('colors', '') if style_info else ''
+    mood = style_info.get('mood', '') if style_info else ''
     
     if user_details:
-        return f"""Transform this scene idea into a rich, detailed Stable Diffusion prompt in the style of {artist_name}{style_context}.
-
-USER'S IDEA: {user_details}
-{style_section}
-{genre_section}
-
-Create a comprehensive prompt that:
-1. Preserves the user's core concept
-2. Incorporates the specific artistic techniques listed above
-3. Uses the color palette and mood appropriate to the style
-4. Includes composition elements from the genre
-5. Adds quality modifiers (masterpiece, highly detailed, 8k, museum quality)
-
-The prompt should be 80-120 words, comma-separated, rich in visual descriptors.
-Output ONLY the prompt text."""
+        # User provided their idea - incorporate it
+        return f"""Create SD prompt for: "{user_details}" in style of {artist_name}{style_context}.
+Use: {techniques}. Colors: {colors}. Mood: {mood}.
+Add quality tags: masterpiece, highly detailed, 8k."""
     
-    return f"""Generate a rich, detailed Stable Diffusion prompt for a{genre_context} in the style of {artist_name}{style_context}.
-{style_section}
-{genre_section}
-
-Create a comprehensive prompt that:
-1. Describes a compelling subject/scene appropriate for this genre
-2. Incorporates the specific artistic techniques listed above
-3. Uses the color palette and mood characteristic of this style
-4. Follows composition principles of the genre
-5. Includes: lighting, atmosphere, texture, and quality modifiers
-
-The prompt should be 80-120 words, comma-separated, rich in visual descriptors.
-Output ONLY the prompt text."""
+    # No user details - generate a scene
+    elements = genre_info.get('elements', 'artistic scene') if genre_info else 'artistic scene'
+    return f"""Create SD prompt for {genre_context} in style of {artist_name}{style_context}.
+Include: {elements}. Techniques: {techniques}. Colors: {colors}. Mood: {mood}.
+Add quality tags: masterpiece, highly detailed, 8k."""
 
 
 # Default negative prompt for SD generation

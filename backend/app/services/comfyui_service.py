@@ -15,7 +15,7 @@ from app.models.schemas import (
     GeneratedThumbnail
 )
 from app.services.comfyui_client import get_comfyui_client, ComfyUIError
-from app.services.llm_client import get_cached_provider, LLMError
+from app.services.llm_client import get_cached_provider, LLMError, clean_think_tags
 from app.services.prompts import (
     IMAGE_GEN_SYSTEM_PROMPT,
     IMAGE_GEN_WITH_DETAILS_PROMPT,
@@ -25,6 +25,7 @@ from app.services.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 # Fallback prompts when LLM is not available
 FALLBACK_SCENE_PROMPTS = [
@@ -75,8 +76,10 @@ async def generate_sd_prompt(
             temperature=0.8
         )
         
-        # Clean up the response
-        prompt = response.strip().strip('"').strip("'")
+        # CRITICAL: Ensure response is clean before using as SD prompt
+        # Defense in depth - clean again even though llm_client should have cleaned
+        prompt = clean_think_tags(response)
+        prompt = prompt.strip().strip('"').strip("'")
         return prompt
         
     except LLMError as e:

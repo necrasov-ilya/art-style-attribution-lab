@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { analysisAPI, historyAPI } from '../api'
@@ -7,7 +9,8 @@ import {
   X, 
   Search, 
   Zap, 
-  LogOut, 
+  LogOut,
+  LogIn,
   Palette,
   Brush,
   BookOpen,
@@ -27,9 +30,16 @@ import {
 } from 'lucide-react'
 
 function Analyze() {
+  const navigate = useNavigate()
   const { logout, user } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const isGuest = user?.isGuest === true
+  
+  const handleLogin = () => {
+    logout()
+    navigate('/login')
+  }
+  
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -320,6 +330,16 @@ function Analyze() {
                 {showPanel ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
               </button>
             )}
+            
+            {isGuest && (
+              <button 
+                onClick={handleLogin}
+                className="group flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 backdrop-blur-md border border-purple-500/50 rounded-lg text-white transition-all shadow-lg shadow-purple-500/20"
+              >
+                <LogIn size={18} />
+                <span className="text-sm font-medium">Войти</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -460,7 +480,7 @@ function Analyze() {
                   </div>
                 </div>
 
-                <div className="p-6 space-y-8">
+                <div className="p-6 space-y-6">
                   {/* Probability Bar */}
                   <div>
                     <div className="flex justify-between text-sm mb-2">
@@ -474,6 +494,35 @@ function Analyze() {
                       />
                     </div>
                   </div>
+
+                  {/* Other possible artists */}
+                  {result.top_artists.length > 1 && (
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                      <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+                        Другие возможные авторы
+                      </h4>
+                      <div className="space-y-2">
+                        {result.top_artists.slice(1, 3).map((artist, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300">
+                              {formatArtistName(artist.artist_slug)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-indigo-500/50 to-purple-500/50 rounded-full"
+                                  style={{ width: `${artist.probability * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-500 font-mono w-12 text-right">
+                                {(artist.probability * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Tags */}
                   <div className="flex flex-wrap gap-2">
@@ -493,13 +542,39 @@ function Analyze() {
 
                   {/* Description */}
                   <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                      <BookOpen size={16} className="text-orange-400" />
-                      Анализ стиля
-                    </h3>
-                    <p className="text-sm text-gray-400 leading-relaxed">
-                      {result.explanation.text}
-                    </p>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <BookOpen size={16} className="text-orange-400" />
+                        Анализ стиля
+                      </h3>
+                      {result.explanation.source === 'stub' && (
+                        <span className="text-[10px] px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full border border-yellow-500/30">
+                          Базовый анализ
+                        </span>
+                      )}
+                      {result.explanation.source !== 'stub' && (
+                        <span className="text-[10px] px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
+                          AI анализ
+                        </span>
+                      )}
+                    </div>
+                    <div className="prose prose-sm prose-invert max-w-none text-gray-300 leading-relaxed
+                      prose-headings:text-white prose-headings:font-bold prose-headings:mt-4 prose-headings:mb-2
+                      prose-h2:text-base prose-h2:border-b prose-h2:border-white/10 prose-h2:pb-2
+                      prose-h3:text-sm prose-h3:text-purple-300
+                      prose-p:text-gray-400 prose-p:my-2
+                      prose-strong:text-white prose-strong:font-semibold
+                      prose-ul:my-2 prose-li:my-0.5 prose-li:text-gray-400
+                      prose-hr:border-white/10">
+                      <ReactMarkdown>
+                        {result.explanation.text}
+                      </ReactMarkdown>
+                    </div>
+                    {result.explanation.source === 'stub' && (
+                      <p className="mt-3 text-[11px] text-gray-600 italic">
+                        💡 Для расширенного AI-анализа настройте LLM провайдер в .env файле
+                      </p>
+                    )}
                   </div>
 
                   {/* Generation Studio */}
@@ -563,26 +638,46 @@ function Analyze() {
 
                     {/* Generated Images Grid */}
                     {generatedImages && !generating && (
-                      <div className="mt-6 grid grid-cols-2 gap-2">
-                        {generatedImages.images.map((img, index) => (
-                          <div 
-                            key={index} 
-                            className="group relative aspect-square rounded-lg overflow-hidden bg-gray-800 animate-blur-in"
-                            style={{ animationDelay: `${index * 150}ms` }}
-                          >
-                            <img src={img.url} alt="" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-white/40">
-                                <Download size={16} />
-                              </button>
-                            </div>
+                      <div className="mt-6 space-y-3">
+                        {/* Show prompt used */}
+                        {generatedImages.prompt && (
+                          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                            <p className="text-[10px] text-purple-400 uppercase tracking-wider mb-1 font-medium">Использованный промпт</p>
+                            <p className="text-xs text-gray-300 italic leading-relaxed">"{generatedImages.prompt}"</p>
                           </div>
-                        ))}
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          {generatedImages.images.map((img, index) => (
+                            <div 
+                              key={index} 
+                              className="group relative aspect-square rounded-lg overflow-hidden bg-gray-800 animate-blur-in"
+                              style={{ animationDelay: `${index * 150}ms` }}
+                            >
+                              <img src={img.url} alt="" className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-white/40">
+                                  <Download size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     
                     {generationError && (
-                      <p className="mt-3 text-xs text-red-400">{generationError}</p>
+                      <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                            <X size={16} className="text-red-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-red-400 mb-1">Ошибка генерации</p>
+                            <p className="text-xs text-gray-400">{generationError}</p>
+                            <p className="text-[11px] text-gray-600 mt-2">Убедитесь, что ComfyUI запущен и доступен</p>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

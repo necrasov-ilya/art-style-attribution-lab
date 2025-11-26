@@ -4,6 +4,7 @@ This module provides a unified interface for LLM calls regardless of the provide
 Provider is selected via LLM_PROVIDER environment variable.
 """
 import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -12,6 +13,44 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def clean_think_tags(text: str) -> str:
+    """Remove <think>...</think> and similar reasoning blocks from LLM response.
+    
+    Some LLMs (especially DeepSeek R1 and other reasoning models) may include
+    internal reasoning in <think> tags. This function strips them out.
+    
+    Args:
+        text: Raw LLM response text
+        
+    Returns:
+        Cleaned text without reasoning blocks
+    """
+    if not text:
+        return ""
+    
+    # Remove various thinking/reasoning block patterns
+    # Handles: <think>...</think>, <thinking>...</thinking>, <reasoning>...</reasoning>
+    # Also handles unclosed tags and tags with attributes
+    patterns = [
+        r'<think[^>]*>[\s\S]*?</think>',      # <think>...</think> with optional attributes
+        r'<thinking[^>]*>[\s\S]*?</thinking>', # <thinking>...</thinking>
+        r'<reasoning[^>]*>[\s\S]*?</reasoning>', # <reasoning>...</reasoning>
+        r'<reflect[^>]*>[\s\S]*?</reflect>',   # <reflect>...</reflect>
+        r'<thought[^>]*>[\s\S]*?</thought>',   # <thought>...</thought>
+        r'<think[^>]*>[\s\S]*$',               # Unclosed <think> tag (takes rest of string)
+        r'<thinking[^>]*>[\s\S]*$',            # Unclosed <thinking> tag
+        r'^[\s\S]*?</think>',                   # Orphaned </think> at start
+        r'^[\s\S]*?</thinking>',                # Orphaned </thinking> at start
+    ]
+    
+    for pattern in patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    # Clean up any resulting multiple newlines or leading/trailing whitespace
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 class LLMProvider(ABC):
@@ -85,7 +124,8 @@ class OpenAIProvider(LLMProvider):
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                content = data["choices"][0]["message"]["content"]
+                return clean_think_tags(content)
                 
             except httpx.HTTPStatusError as e:
                 logger.error(f"OpenAI API error: {e.response.status_code} - {e.response.text}")
@@ -135,7 +175,8 @@ class OpenRouterProvider(LLMProvider):
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                content = data["choices"][0]["message"]["content"]
+                return clean_think_tags(content)
                 
             except httpx.HTTPStatusError as e:
                 logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
@@ -161,7 +202,6 @@ class OllamaProvider(LLMProvider):
     ) -> str:
         async with httpx.AsyncClient(timeout=120.0) as client:
             try:
-                # Ollama uses /api/chat endpoint
                 response = await client.post(
                     f"{self.base_url}/api/chat",
                     json={
@@ -179,7 +219,8 @@ class OllamaProvider(LLMProvider):
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data["message"]["content"]
+                content = data["message"]["content"]
+                return clean_think_tags(content)
                 
             except httpx.ConnectError:
                 logger.error(f"Cannot connect to Ollama at {self.base_url}")

@@ -12,7 +12,7 @@ from app.models.schemas import (
     StylePrediction, 
     AnalysisExplanation
 )
-from app.services.llm_client import get_cached_provider, LLMError
+from app.services.llm_client import get_cached_provider, LLMError, clean_think_tags
 from app.services.prompts import (
     SYSTEM_PROMPT,
     build_analysis_prompt,
@@ -89,8 +89,11 @@ async def generate_explanation(
             temperature=settings.LLM_TEMPERATURE
         )
         
+        # Ensure response is clean (defense in depth)
+        cleaned_response = clean_think_tags(response)
+        
         return AnalysisExplanation(
-            text=response,
+            text=cleaned_response,
             source=settings.LLM_PROVIDER
         )
         
