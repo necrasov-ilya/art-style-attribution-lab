@@ -50,7 +50,7 @@ function Login() {
     
     try {
       const response = await authAPI.guest()
-      login(response.data.access_token)
+      login(response.data.access_token, { isGuest: true })
       navigate('/')
     } catch (err) {
       setError('Не удалось войти как гость. Попробуйте снова.')

@@ -27,8 +27,9 @@ import {
 } from 'lucide-react'
 
 function Analyze() {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const isGuest = user?.isGuest === true
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -212,13 +213,14 @@ function Analyze() {
   return (
     <div className="h-screen w-full bg-gray-950 text-white overflow-hidden flex font-sans selection:bg-purple-500/30">
       
-      {/* Sidebar (History) - Floating Drawer */}
-      <div 
-        className={`
-          fixed inset-y-0 left-0 z-50 w-80 bg-gray-900/95 backdrop-blur-xl border-r border-white/10 transform transition-transform duration-300 ease-in-out shadow-2xl
-          ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
+      {/* Sidebar (History) - Floating Drawer - Hidden for guests */}
+      {!isGuest && (
+        <div 
+          className={`
+            fixed inset-y-0 left-0 z-50 w-80 bg-gray-900/95 backdrop-blur-xl border-r border-white/10 transform transition-transform duration-300 ease-in-out shadow-2xl
+            ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
+          `}
+        >
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
           <span className="font-bold text-lg tracking-tight text-white/90">История</span>
           <button 
@@ -285,6 +287,7 @@ function Analyze() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Main Workspace */}
       <div className="flex-1 relative h-full flex flex-col min-w-0">
@@ -292,13 +295,15 @@ function Analyze() {
         {/* Top Bar */}
         <header className="absolute top-0 left-0 right-0 h-16 z-40 flex items-center justify-between px-6 pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
-            <button 
-              onClick={() => setShowSidebar(true)}
-              className="group flex items-center gap-2 px-3 py-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all"
-            >
-              <History size={18} />
-              <span className="text-sm font-medium max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">История</span>
-            </button>
+            {!isGuest && (
+              <button 
+                onClick={() => setShowSidebar(true)}
+                className="group flex items-center gap-2 px-3 py-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+              >
+                <History size={18} />
+                <span className="text-sm font-medium max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">История</span>
+              </button>
+            )}
             
             <div className="flex items-center gap-3 px-4 py-2 rounded-full">
               <img src="/images/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
