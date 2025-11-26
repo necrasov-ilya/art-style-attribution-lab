@@ -31,7 +31,8 @@ IMG_SIZE = (224, 224)
 def preprocess_image(image_path: str) -> np.ndarray:
     img = Image.open(image_path).convert("RGB")
     img = img.resize(IMG_SIZE)
-    arr = np.array(img).astype("float32")   # без mb_preprocess
+    arr = np.array(img).astype("float32")
+    arr = mb_preprocess(arr)  # MobileNetV2 expects [-1, 1] normalization
     arr = np.expand_dims(arr, axis=0)
     return arr
 
