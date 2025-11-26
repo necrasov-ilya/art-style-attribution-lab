@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # OpenRouter
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_MODEL: str = "anthropic/claude-3-haiku"
+    OPENROUTER_VISION_MODEL: str = "openrouter/bert-nebulon-alpha"
+    
+    # Vision LLM for scene analysis
+    VISION_LLM_ENABLED: bool = False
+    VISION_LLM_PROVIDER: Literal["openai", "openrouter", "ollama", "none"] = "none"
     
     # Ollama
     OLLAMA_BASE_URL: str = "http://localhost:11434"

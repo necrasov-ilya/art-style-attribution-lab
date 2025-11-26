@@ -3,10 +3,12 @@
 This module provides a unified interface for LLM calls regardless of the provider.
 Provider is selected via LLM_PROVIDER environment variable.
 """
+import base64
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List, Union
 
 import httpx
 
@@ -274,3 +276,182 @@ def reset_provider_cache():
     """Reset the cached provider (useful for testing or config changes)."""
     global _cached_provider
     _cached_provider = None
+
+
+# ============ Vision LLM Support ============
+
+def encode_image_to_base64(image_path: str) -> str:
+    """Read image file and encode to base64."""
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+
+def get_image_media_type(image_path: str) -> str:
+    """Determine media type from file extension."""
+    ext = Path(image_path).suffix.lower()
+    media_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".bmp": "image/bmp",
+    }
+    return media_types.get(ext, "image/jpeg")
+
+
+async def generate_with_vision(
+    image_path: str,
+    prompt: str,
+    system_prompt: str = "You are an expert art analyst. Analyze the image and respond in Russian.",
+    max_tokens: int = 1024,
+    temperature: float = 0.7
+) -> str:
+    """Generate LLM response with image input using Vision API.
+    
+    Uses VISION_LLM_PROVIDER setting to select the provider.
+    Falls back to text-only if vision is not available.
+    
+    Args:
+        image_path: Path to image file
+        prompt: User prompt describing what to analyze
+        system_prompt: System message
+        max_tokens: Maximum tokens in response
+        temperature: Sampling temperature
+        
+    Returns:
+        Generated text response
+    """
+    if not settings.VISION_LLM_ENABLED:
+        logger.warning("Vision LLM is disabled, returning placeholder")
+        return "Vision LLM не настроен. Установите VISION_LLM_ENABLED=true в .env"
+    
+    provider = settings.VISION_LLM_PROVIDER.lower()
+    
+    if provider == "openrouter":
+        return await _vision_openrouter(image_path, prompt, system_prompt, max_tokens, temperature)
+    elif provider == "openai":
+        return await _vision_openai(image_path, prompt, system_prompt, max_tokens, temperature)
+    else:
+        logger.warning(f"Vision provider '{provider}' not supported")
+        return "Vision LLM провайдер не поддерживается."
+
+
+async def _vision_openrouter(
+    image_path: str,
+    prompt: str,
+    system_prompt: str,
+    max_tokens: int,
+    temperature: float
+) -> str:
+    """Call OpenRouter Vision API."""
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMError("OPENROUTER_API_KEY is not configured")
+    
+    image_b64 = encode_image_to_base64(image_path)
+    media_type = get_image_media_type(image_path)
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://art-style-attribution-lab.local",
+                    "X-Title": "Art Style Attribution Lab"
+                },
+                json={
+                    "model": settings.OPENROUTER_VISION_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{media_type};base64,{image_b64}"
+                                    }
+                                },
+                                {
+                                    "type": "text",
+                                    "text": prompt
+                                }
+                            ]
+                        }
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            return clean_think_tags(content)
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"OpenRouter Vision API error: {e.response.status_code} - {e.response.text}")
+            raise LLMError(f"OpenRouter Vision API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"OpenRouter Vision request failed: {e}")
+            raise LLMError(f"OpenRouter Vision request failed: {str(e)}")
+
+
+async def _vision_openai(
+    image_path: str,
+    prompt: str,
+    system_prompt: str,
+    max_tokens: int,
+    temperature: float
+) -> str:
+    """Call OpenAI Vision API (GPT-4o)."""
+    if not settings.OPENAI_API_KEY:
+        raise LLMError("OPENAI_API_KEY is not configured")
+    
+    image_b64 = encode_image_to_base64(image_path)
+    media_type = get_image_media_type(image_path)
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini",  # or gpt-4o for better quality
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{media_type};base64,{image_b64}"
+                                    }
+                                },
+                                {
+                                    "type": "text",
+                                    "text": prompt
+                                }
+                            ]
+                        }
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            return clean_think_tags(content)
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"OpenAI Vision API error: {e.response.status_code} - {e.response.text}")
+            raise LLMError(f"OpenAI Vision API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"OpenAI Vision request failed: {e}")
+            raise LLMError(f"OpenAI Vision request failed: {str(e)}")

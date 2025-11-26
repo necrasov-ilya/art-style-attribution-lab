@@ -1,16 +1,180 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { analysisAPI, historyAPI } from '../api'
+import { analysisAPI, historyAPI, deepAnalysisAPI } from '../api'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { 
   Upload, X, Search, Zap, LogOut, LogIn, Palette, Brush, BookOpen, 
   Sparkles, Loader2, Download, History, ChevronLeft, ChevronRight, 
   Maximize2, PanelRightClose, PanelRightOpen, Image as ImageIcon,
-  Share2, Info, Layers, Eye, Menu, Clock
+  Share2, Info, Layers, Eye, Menu, Clock, Sun, Compass, Heart, User
 } from 'lucide-react'
+
+// Icon mapping for inline markers
+const MARKER_ICONS = {
+  palette: Palette,
+  brush: Brush,
+  layers: Layers,
+  heart: Heart,
+  clock: Clock,
+  user: User,
+  info: Info,
+}
+
+// Inline marker component for rendering citation badges in text
+const InlineMarker = ({ type, value, label, icon }) => {
+  const IconComponent = MARKER_ICONS[icon] || Info
+  
+  // Color marker with swatch
+  if (type === 'color' && value.startsWith('#')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 bg-white/10 rounded-full text-sm border border-white/20 hover:border-gold-400/50 transition-colors cursor-default group">
+        <span 
+          className="w-3 h-3 rounded-full border border-white/30 shadow-sm" 
+          style={{ backgroundColor: value }}
+        />
+        <span className="text-gray-200 group-hover:text-white transition-colors">{label}</span>
+      </span>
+    )
+  }
+  
+  // Style-based marker colors
+  const markerStyles = {
+    technique: 'bg-purple-500/20 border-purple-500/30 text-purple-200 hover:border-purple-400',
+    composition: 'bg-blue-500/20 border-blue-500/30 text-blue-200 hover:border-blue-400',
+    mood: 'bg-pink-500/20 border-pink-500/30 text-pink-200 hover:border-pink-400',
+    era: 'bg-amber-500/20 border-amber-500/30 text-amber-200 hover:border-amber-400',
+    artist: 'bg-green-500/20 border-green-500/30 text-green-200 hover:border-green-400',
+  }
+  
+  const style = markerStyles[type] || 'bg-white/10 border-white/20 text-gray-200'
+  
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 rounded-full text-sm border transition-colors cursor-default ${style}`}>
+      <IconComponent size={12} className="opacity-70" />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+// Parse and render text with inline markers - supports {type|value|label} format
+const RichTextWithMarkers = ({ text, markers = [] }) => {
+  // If no markers provided, try to parse them from raw text
+  const markerRegex = /\{(\w+)\|([^}|]+)(?:\|([^}]+))?\}/g
+  
+  // Parse markers from text if not provided
+  const parseMarkers = (inputText) => {
+    const parsed = []
+    let match
+    while ((match = markerRegex.exec(inputText)) !== null) {
+      parsed.push({
+        full: match[0],
+        type: match[1],
+        value: match[2],
+        label: match[3] || match[2]
+      })
+    }
+    return parsed
+  }
+  
+  // Render text with inline markers replaced by React components
+  const renderWithMarkers = (inputText) => {
+    if (!inputText) return null
+    
+    const parts = []
+    let lastIndex = 0
+    let match
+    const regex = /\{(\w+)\|([^}|]+)(?:\|([^}]+))?\}/g
+    
+    while ((match = regex.exec(inputText)) !== null) {
+      // Add text before marker
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', content: inputText.slice(lastIndex, match.index) })
+      }
+      // Add marker
+      parts.push({
+        type: 'marker',
+        markerType: match[1],
+        value: match[2],
+        label: match[3] || match[2]
+      })
+      lastIndex = match.index + match[0].length
+    }
+    // Add remaining text
+    if (lastIndex < inputText.length) {
+      parts.push({ type: 'text', content: inputText.slice(lastIndex) })
+    }
+    
+    return parts.map((part, i) => {
+      if (part.type === 'marker') {
+        return <InlineMarker key={i} type={part.markerType} value={part.value} label={part.label} icon={getMarkerIcon(part.markerType)} />
+      }
+      return <span key={i}>{part.content}</span>
+    })
+  }
+  
+  // Get appropriate icon for marker type
+  const getMarkerIcon = (type) => {
+    const icons = {
+      color: 'palette',
+      technique: 'brush',
+      composition: 'layers',
+      mood: 'heart',
+      era: 'clock',
+      artist: 'user'
+    }
+    return icons[type] || 'info'
+  }
+  
+  // Custom ReactMarkdown components that support inline markers
+  return (
+    <ReactMarkdown
+      components={{
+        h2: ({node, children, ...props}) => (
+          <h2 className="text-2xl font-serif text-white mt-8 mb-4 pb-2 border-b border-white/10" {...props}>
+            {typeof children === 'string' ? renderWithMarkers(children) : children}
+          </h2>
+        ),
+        h3: ({node, children, ...props}) => (
+          <h3 className="text-lg font-medium text-gold-400 mt-6 mb-3" {...props}>
+            {typeof children === 'string' ? renderWithMarkers(children) : children}
+          </h3>
+        ),
+        p: ({node, children, ...props}) => (
+          <p className="text-gray-300 mb-4 leading-relaxed text-base" {...props}>
+            {Array.isArray(children) 
+              ? children.map((child, i) => typeof child === 'string' ? <span key={i}>{renderWithMarkers(child)}</span> : child)
+              : typeof children === 'string' ? renderWithMarkers(children) : children
+            }
+          </p>
+        ),
+        strong: ({node, children, ...props}) => (
+          <strong className="text-white font-semibold" {...props}>
+            {typeof children === 'string' ? renderWithMarkers(children) : children}
+          </strong>
+        ),
+        em: ({node, children, ...props}) => (
+          <em className="text-gray-400 italic" {...props}>
+            {typeof children === 'string' ? renderWithMarkers(children) : children}
+          </em>
+        ),
+        li: ({node, children, ...props}) => (
+          <li className="text-gray-300 mb-2" {...props}>
+            {Array.isArray(children) 
+              ? children.map((child, i) => typeof child === 'string' ? <span key={i}>{renderWithMarkers(child)}</span> : child)
+              : typeof children === 'string' ? renderWithMarkers(children) : children
+            }
+          </li>
+        ),
+        ul: ({node, ...props}) => <ul className="list-disc list-inside mb-4 space-y-1" {...props} />,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  )
+}
 
 function Analyze() {
   const navigate = useNavigate()
@@ -39,6 +203,19 @@ function Analyze() {
   // Deep Analysis State
   const [deepAnalysisActive, setDeepAnalysisActive] = useState(false)
   const [deepAnalysisStep, setDeepAnalysisStep] = useState(0)
+  const [deepAnalysisResults, setDeepAnalysisResults] = useState(null)
+  const [deepAnalysisError, setDeepAnalysisError] = useState('')
+
+  // Deep Analysis Steps for progress indicator
+  const DEEP_ANALYSIS_STEPS = [
+    { key: 'features', label: 'Извлечение признаков', icon: Eye },
+    { key: 'color', label: 'Психология цвета', icon: Palette },
+    { key: 'composition', label: 'Анализ композиции', icon: Layers },
+    { key: 'scene', label: 'Сюжетный анализ', icon: Search },
+    { key: 'technique', label: 'Техника исполнения', icon: Brush },
+    { key: 'historical', label: 'Исторический контекст', icon: BookOpen },
+    { key: 'summary', label: 'Синтез результатов', icon: Sparkles },
+  ]
 
   // Scroll parallax hooks
   const { scrollYProgress } = useScroll()
@@ -78,7 +255,11 @@ function Analyze() {
     setError('')
     setResult(null)
     setGeneratedImages(null)
+    // Reset deep analysis state
     setDeepAnalysisActive(false)
+    setDeepAnalysisStep(0)
+    setDeepAnalysisResults(null)
+    setDeepAnalysisError('')
   }
 
   const handleAnalyze = async () => {
@@ -100,16 +281,38 @@ function Analyze() {
     }
   }
 
-  const handleDeepAnalysis = () => {
+  const handleDeepAnalysis = async () => {
+    if (!result?.image_path) return
+    
     setDeepAnalysisActive(true)
     setDeepAnalysisStep(0)
-    // Simulate deep analysis pipeline
-    let step = 0
-    const interval = setInterval(() => {
-      step++
-      setDeepAnalysisStep(step)
-      if (step >= 4) clearInterval(interval)
-    }, 1500)
+    setDeepAnalysisError('')
+    setDeepAnalysisResults(null)
+    
+    try {
+      // Simulate step progression for UX (actual API does all at once)
+      const stepInterval = setInterval(() => {
+        setDeepAnalysisStep(prev => Math.min(prev + 1, DEEP_ANALYSIS_STEPS.length - 1))
+      }, 2000)
+      
+      const response = await deepAnalysisAPI.analyzeFull(result.image_path)
+      
+      clearInterval(stepInterval)
+      setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
+      setDeepAnalysisResults(response.data)
+      
+    } catch (err) {
+      console.error('Deep analysis failed:', err)
+      setDeepAnalysisError(err.response?.data?.detail || 'Ошибка глубокого анализа')
+      setDeepAnalysisActive(false)
+    }
+  }
+
+  const resetDeepAnalysis = () => {
+    setDeepAnalysisActive(false)
+    setDeepAnalysisStep(0)
+    setDeepAnalysisResults(null)
+    setDeepAnalysisError('')
   }
 
   const handleGenerate = async () => {
@@ -469,70 +672,146 @@ function Analyze() {
                     <h3 className="font-serif text-3xl text-white">Глубокий анализ</h3>
                     <span className="text-xs text-gold-500 border border-gold-500/30 px-3 py-1 rounded-full bg-gold-500/10 font-bold tracking-wider">AI PRO SUITE</span>
                   </div>
-
-                  {!deepAnalysisActive ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[
-                        { icon: Palette, label: "Психология цвета", desc: "Эмоциональное влияние палитры" },
-                        { icon: Layers, label: "Композиция", desc: "Золотое сечение и баланс" },
-                        { icon: BookOpen, label: "Исторический контекст", desc: "Эпоха и влияния" },
-                        { icon: Brush, label: "Техника", desc: "Анализ мазков кисти" }
-                      ].map((item, i) => (
-                        <button 
-                          key={i}
-                          className="p-6 border border-white/10 hover:border-gold-500/50 bg-black/20 hover:bg-white/5 transition-all text-left group rounded-xl"
-                        >
-                          <item.icon className="w-8 h-8 text-gray-500 group-hover:text-gold-400 mb-4 transition-colors" />
-                          <div className="font-medium text-xl text-white mb-1">{item.label}</div>
-                          <div className="text-sm text-gray-500">{item.desc}</div>
-                        </button>
-                      ))}
-                      
+                  
+                  {/* Launch Button - show when no analysis running */}
+                  {!deepAnalysisActive && !deepAnalysisResults && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
+                        Получите развёрнутое искусствоведческое исследование с анализом цвета, композиции, 
+                        техники и исторического контекста — всё в одном связном тексте музейного качества.
+                      </p>
                       <button 
                         onClick={handleDeepAnalysis}
-                        className="col-span-1 md:col-span-2 mt-4 py-6 bg-gradient-to-r from-gold-600 to-gold-400 text-black font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(212,175,55,0.3)] transition-all relative overflow-hidden group rounded-xl"
+                        className="px-12 py-6 bg-gradient-to-r from-gold-600 to-gold-400 text-black font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(212,175,55,0.3)] transition-all relative overflow-hidden group rounded-xl"
                       >
                         <span className="relative z-10 flex items-center justify-center gap-3">
-                          <Sparkles size={20} /> Запустить полный глубокий анализ
+                          <Sparkles size={20} /> Запустить глубокий анализ
                         </span>
                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                       </button>
                     </div>
-                  ) : (
-                    <div className="border border-gold-500/30 bg-gold-500/5 p-8 rounded-xl relative overflow-hidden min-h-[300px] flex flex-col justify-center">
-                      <div className="absolute inset-0 bg-grain opacity-10" />
-                      
-                      {deepAnalysisStep < 4 ? (
-                        <div className="py-8 text-center">
-                          <Loader2 className="w-10 h-10 text-gold-500 animate-spin mx-auto mb-6" />
-                          <p className="text-gold-200 font-serif text-2xl animate-pulse">
-                            {[
-                              "Извлечение цветовой палитры...",
-                              "Анализ композиционной структуры...",
-                              "Запрос к исторической базе данных...",
-                              "Синтез финального отчета..."
-                            ][deepAnalysisStep]}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="text-left animate-fade-in">
-                          <div className="mb-8">
-                            <h4 className="text-gold-400 text-sm uppercase tracking-wider mb-4 font-bold">Доминирующая палитра</h4>
-                            <div className="flex h-16 w-full rounded-lg overflow-hidden shadow-lg">
-                              {['#2A1B15', '#8B4513', '#CD853F', '#DEB887', '#F5DEB3'].map(c => (
-                                <div key={c} className="flex-1 hover:flex-[1.5] transition-all duration-300" style={{ backgroundColor: c }} title={c} />
-                              ))}
+                  )}
+                  
+                  {/* Error Display */}
+                  {deepAnalysisError && (
+                    <div className="mt-4 p-4 bg-red-900/30 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                      {deepAnalysisError}
+                    </div>
+                  )}
+                  
+                  {/* Analysis In Progress */}
+                  {deepAnalysisActive && !deepAnalysisResults && (
+                    <div className="border border-gold-500/30 bg-gold-500/5 p-8 rounded-xl">
+                      {/* Progress Steps */}
+                      <div className="mb-8">
+                        <div className="flex justify-between mb-4">
+                          {DEEP_ANALYSIS_STEPS.map((step, i) => (
+                            <div key={step.key} className="flex flex-col items-center flex-1">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 ${
+                                i < deepAnalysisStep ? 'bg-gold-500 text-black' :
+                                i === deepAnalysisStep ? 'bg-gold-500/50 text-white animate-pulse' :
+                                'bg-white/10 text-gray-500'
+                              }`}>
+                                {i < deepAnalysisStep ? '✓' : <step.icon size={14} />}
+                              </div>
+                              <span className={`text-xs mt-2 text-center hidden md:block ${
+                                i <= deepAnalysisStep ? 'text-gold-400' : 'text-gray-600'
+                              }`}>
+                                {step.label}
+                              </span>
                             </div>
-                          </div>
-                          
-                          <div className="space-y-6 text-gray-300 leading-relaxed text-lg">
-                            <p><strong className="text-white block mb-1">Психология цвета</strong> Доминирование земляных тонов (Сиена, Охра) предполагает заземляющую, органическую атмосферу, типичную для этого периода.</p>
-                            <p><strong className="text-white block mb-1">Композиция</strong> Объект расположен в соответствии с правилом третей, создавая динамичный, но сбалансированный визуальный вес.</p>
-                            <p><strong className="text-white block mb-1">Техника</strong> Видимые мазки импасто указывают на быстрое, экспрессивное нанесение краски, характерное для поздних лет художника.</p>
-                          </div>
+                          ))}
+                        </div>
+                        <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                          <motion.div 
+                            className="h-full bg-gradient-to-r from-gold-600 to-gold-400"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(deepAnalysisStep / DEEP_ANALYSIS_STEPS.length) * 100}%` }}
+                            transition={{ duration: 0.5 }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="text-center py-8">
+                        <Loader2 className="w-10 h-10 text-gold-500 animate-spin mx-auto mb-6" />
+                        <p className="text-gold-200 font-serif text-2xl animate-pulse">
+                          {DEEP_ANALYSIS_STEPS[Math.min(deepAnalysisStep, DEEP_ANALYSIS_STEPS.length - 1)]?.label}...
+                        </p>
+                        <p className="text-gray-500 text-sm mt-2">
+                          Выполняется многоэтапный анализ с использованием ИИ
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Analysis Complete - Show ONLY Summary */}
+                  {deepAnalysisResults && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      {/* Reset Button */}
+                      <div className="flex justify-end mb-6">
+                        <button 
+                          onClick={resetDeepAnalysis}
+                          className="text-sm text-gray-400 hover:text-white flex items-center gap-2"
+                        >
+                          <X size={16} /> Закрыть
+                        </button>
+                      </div>
+                      
+                      {/* Color Palette Preview - compact visualization */}
+                      {deepAnalysisResults.color_features?.dominant_colors && (
+                        <div className="flex h-3 w-full rounded-full overflow-hidden shadow-lg mb-8">
+                          {deepAnalysisResults.color_features.dominant_colors.slice(0, 7).map((c, i) => (
+                            <div 
+                              key={i} 
+                              className="flex-1 first:rounded-l-full last:rounded-r-full" 
+                              style={{ backgroundColor: c.hex }}
+                              title={`${c.hex} (${(c.percentage * 100).toFixed(0)}%)`}
+                            />
+                          ))}
                         </div>
                       )}
-                    </div>
+                      
+                      {/* Unified Summary - THE MAIN CONTENT */}
+                      {deepAnalysisResults.summary && (
+                        <div className="prose prose-invert prose-lg max-w-none">
+                          {/* Legend for inline markers */}
+                          <div className="flex flex-wrap gap-3 mb-8 p-4 bg-black/20 rounded-lg border border-white/5 not-prose">
+                            <span className="text-xs text-gray-500">Интерактивные метки:</span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                              <span className="w-3 h-3 rounded-full bg-gradient-to-br from-pink-400 to-purple-500"></span> Цвет
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-purple-400">
+                              <Brush size={12} /> Техника
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
+                              <Layers size={12} /> Композиция
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-pink-400">
+                              <Heart size={12} /> Настроение
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
+                              <Clock size={12} /> Эпоха
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
+                              <User size={12} /> Художник
+                            </span>
+                          </div>
+                          
+                          {/* Render summary with inline markers */}
+                          <RichTextWithMarkers 
+                            text={
+                              typeof deepAnalysisResults.summary === 'object' 
+                                ? (deepAnalysisResults.summary.raw_text || deepAnalysisResults.summary.cleaned_text)
+                                : deepAnalysisResults.summary
+                            }
+                            markers={deepAnalysisResults.summary?.markers || []}
+                          />
+                        </div>
+                      )}
+                    </motion.div>
                   )}
                 </div>
               </div>

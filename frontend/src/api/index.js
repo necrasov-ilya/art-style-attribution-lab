@@ -63,4 +63,36 @@ export const historyAPI = {
   clear: () => api.delete('/history'),
 }
 
+// Deep Analysis API
+export const deepAnalysisAPI = {
+  /**
+   * Run a single analysis module
+   * @param {string} module - One of: color, composition, scene, technique, historical
+   * @param {string} imagePath - Path to image (e.g., /api/uploads/filename.jpg)
+   */
+  analyzeModule: (module, imagePath) => 
+    api.get(`/deep-analysis/module/${module}`, { params: { image_path: imagePath } }),
+  
+  /**
+   * Run full deep analysis with all modules
+   * @param {string} imagePath - Path to image (e.g., /api/uploads/filename.jpg)
+   */
+  analyzeFull: (imagePath) => 
+    api.get('/deep-analysis/full', { params: { image_path: imagePath } }),
+  
+  /**
+   * Get raw color features without LLM interpretation
+   * @param {string} imagePath - Path to image
+   */
+  getColorFeatures: (imagePath) => 
+    api.get('/deep-analysis/features/color', { params: { image_path: imagePath } }),
+  
+  /**
+   * Get raw composition features without LLM interpretation
+   * @param {string} imagePath - Path to image
+   */
+  getCompositionFeatures: (imagePath) => 
+    api.get('/deep-analysis/features/composition', { params: { image_path: imagePath } }),
+}
+
 export default api

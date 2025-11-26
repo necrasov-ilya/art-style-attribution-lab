@@ -169,3 +169,147 @@ class HistoryListResponse(BaseModel):
     items: List[HistoryItemResponse]
     total: int
 
+
+# ============ Deep Analysis Schemas ============
+
+class DominantColor(BaseModel):
+    """Single dominant color with metadata."""
+    hex: str
+    rgb: List[int] = Field(..., min_length=3, max_length=3)
+    lab: List[float] = Field(..., min_length=3, max_length=3)
+    percentage: float = Field(..., ge=0.0, le=1.0)
+    name: Optional[str] = None  # Human-readable color name
+    temperature: str = "neutral"  # "warm", "cool", "neutral"
+
+
+class ColorFeatures(BaseModel):
+    """Extracted color features from image."""
+    dominant_colors: List[DominantColor]
+    warm_ratio: float = Field(..., ge=0.0, le=1.0)
+    cool_ratio: float = Field(..., ge=0.0, le=1.0)
+    overall_contrast: float = Field(..., ge=0.0, le=1.0)
+    overall_saturation: float = Field(..., ge=0.0, le=1.0)
+    brightness: float = Field(..., ge=0.0, le=1.0)
+
+
+class ColorPsychologyAnalysis(BaseModel):
+    """LLM-generated color psychology analysis."""
+    palette_interpretation: str  # Emotional interpretation of the palette
+    mood_tags: List[str]  # e.g., ["melancholic", "warm", "energetic"]
+    color_harmony: str  # Type of color harmony detected
+    emotional_impact: str  # Description of emotional impact
+    source: str = "llm"  # "llm" or "stub"
+
+
+class CompositionFeatures(BaseModel):
+    """Extracted composition features from image."""
+    saliency_center_x: float  # Normalized 0-1
+    saliency_center_y: float  # Normalized 0-1
+    rule_of_thirds_alignment: float = Field(..., ge=0.0, le=1.0)  # How well key points align
+    horizontal_symmetry: float = Field(..., ge=0.0, le=1.0)
+    vertical_symmetry: float = Field(..., ge=0.0, le=1.0)
+    visual_weight_distribution: str  # "balanced", "left-heavy", "right-heavy", "top-heavy", "bottom-heavy"
+    focal_points: List[Dict[str, float]]  # [{x, y, strength}, ...]
+    perspective_lines_detected: bool = False
+    vanishing_points: List[Dict[str, float]] = []  # [{x, y}, ...]
+
+
+class CompositionAnalysis(BaseModel):
+    """LLM-generated composition analysis."""
+    composition_type: str  # "symmetrical", "dynamic", "triangular", etc.
+    balance_description: str
+    visual_flow: str  # Description of how the eye moves
+    focal_point_analysis: str
+    spatial_depth: str  # Analysis of depth and perspective
+    dynamism_level: str  # "static", "dynamic", "highly dynamic"
+    source: str = "llm"
+
+
+class SceneFeatures(BaseModel):
+    """Extracted scene/semantic features."""
+    detected_objects: List[str] = []  # From CLIP/BLIP/WD14
+    style_tags: List[str] = []  # From tagger
+    clip_description: Optional[str] = None  # CLIP Interrogator output
+    detected_text: List[Dict[str, Any]] = []  # OCR results [{text, language, confidence, bbox}, ...]
+    primary_subject: Optional[str] = None
+
+
+class SceneAnalysis(BaseModel):
+    """LLM-generated scene/semantic analysis."""
+    narrative_interpretation: str  # Story/meaning interpretation
+    symbolism: str  # Analysis of symbolic elements
+    subject_analysis: str  # Analysis of depicted subjects
+    text_interpretation: Optional[str] = None  # If text was detected
+    cultural_references: List[str] = []
+    source: str = "llm"
+
+
+class TechniqueAnalysis(BaseModel):
+    """LLM-generated technique/light/space analysis."""
+    brushwork: str  # Analysis of brushwork/technique
+    light_analysis: str  # Light source, quality, mood
+    spatial_treatment: str  # How space is handled
+    medium_estimation: str  # Estimated medium (oil, watercolor, etc.)
+    technical_skill_indicators: List[str]
+    source: str = "llm"
+
+
+class HistoricalContextAnalysis(BaseModel):
+    """LLM-generated historical context analysis."""
+    estimated_era: str  # Estimated time period
+    art_movement_connections: List[str]  # Connected art movements
+    artistic_influences: str  # Detected influences
+    historical_significance: str  # Place in art history
+    cultural_context: str  # Cultural/historical context
+    confidence_note: str  # Disclaimer about interpretation
+    source: str = "llm"
+
+
+class DeepAnalysisRequest(BaseModel):
+    """Request for deep analysis."""
+    module: Optional[str] = None  # "color", "composition", "scene", "technique", "historical", None for full
+    image_path: str  # Path to already uploaded image
+
+
+class InlineMarker(BaseModel):
+    """Single inline marker extracted from summary text."""
+    id: str
+    type: str  # "color", "technique", "composition", "mood", "era", "artist"
+    value: str  # The marker value (e.g., "#4f6b92" for color, "импасто" for technique)
+    label: str  # Display label
+    icon: str  # Icon name for frontend (palette, brush, layers, heart, clock, user)
+    css_class: str  # CSS class for styling
+
+
+class RichSummary(BaseModel):
+    """Rich summary with parsed inline markers."""
+    raw_text: str  # Original text with markers
+    cleaned_text: str  # Text with markers replaced by placeholders
+    html_text: str  # Text with HTML spans for markers
+    markers: List[InlineMarker]  # Extracted markers
+    marker_count: int  # Total number of markers
+
+
+class DeepAnalysisModuleResponse(BaseModel):
+    """Response for single module analysis."""
+    success: bool = True
+    module: str
+    features: Optional[Dict[str, Any]] = None  # Raw extracted features
+    analysis: Dict[str, Any]  # LLM interpretation
+    message: Optional[str] = None
+
+
+class DeepAnalysisFullResponse(BaseModel):
+    """Full deep analysis response with all modules."""
+    success: bool = True
+    color: Optional[ColorPsychologyAnalysis] = None
+    color_features: Optional[ColorFeatures] = None
+    composition: Optional[CompositionAnalysis] = None
+    composition_features: Optional[CompositionFeatures] = None
+    scene: Optional[SceneAnalysis] = None
+    scene_features: Optional[SceneFeatures] = None
+    technique: Optional[TechniqueAnalysis] = None
+    historical: Optional[HistoricalContextAnalysis] = None
+    summary: Optional[RichSummary] = None  # Changed from str to RichSummary
+    message: Optional[str] = None
+
