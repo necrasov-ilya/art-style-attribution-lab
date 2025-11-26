@@ -1,6 +1,8 @@
 """History API endpoint."""
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -13,6 +15,64 @@ from app.models.schemas import (
 )
 
 router = APIRouter(prefix="/history", tags=["History"])
+
+
+class UpdateDeepAnalysisRequest(BaseModel):
+    """Request to add deep analysis to history item."""
+    deep_analysis_result: Dict[str, Any]
+
+
+@router.patch(
+    "/{history_id}/deep-analysis",
+    responses={
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_deep_analysis(
+    history_id: int,
+    request: UpdateDeepAnalysisRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Add deep analysis result to an existing history item.
+    """
+    try:
+        # Skip for guest users
+        try:
+            uname = (current_user.username or '').lower()
+            email = (current_user.email or '').lower()
+            if uname.startswith('guest_') or email.startswith('guest_'):
+                return {"success": True, "message": "Guest users don't save history"}
+        except Exception:
+            pass
+        
+        item = db.query(AnalysisHistory).filter(
+            AnalysisHistory.id == history_id,
+            AnalysisHistory.user_id == current_user.id
+        ).first()
+        
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="History item not found"
+            )
+        
+        item.deep_analysis_result = request.deep_analysis_result
+        db.commit()
+        
+        return {"success": True, "message": "Deep analysis saved"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update history item: {str(e)}"
+        )
 
 
 @router.get(
@@ -64,6 +124,7 @@ async def get_history(
                     top_artist_slug=item.top_artist_slug,
                     created_at=item.created_at,
                     analysis_result=item.analysis_result,
+                    deep_analysis_result=item.deep_analysis_result,
                 )
                 for item in items
             ],

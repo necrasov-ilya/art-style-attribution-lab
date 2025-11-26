@@ -525,37 +525,42 @@ Your task is to create a DEEP, EXTENSIVE analysis that synthesizes all provided 
 
 1. **LENGTH**: Write 8-12 substantial paragraphs (minimum 2000 words). This must be a thorough, in-depth analysis.
 
-2. **INLINE CITATIONS**: Throughout your text, insert special markers to cite specific evidence. Use these EXACT formats with SINGLE curly braces:
-   - `{color|#hexcode|цветовое название}` - when discussing specific colors (e.g., "глубокий {color|#4f6b92|холодный синий} создаёт...")
-   - `{technique|термин}` - when mentioning techniques (e.g., "характерная {technique|импасто} техника нанесения...")
-   - `{composition|термин}` - for composition elements (e.g., "{composition|правило третей} используется для...")
-   - `{mood|настроение}` - for emotional/mood references (e.g., "{mood|меланхоличный} характер произведения...")
-   - `{era|период}` - for historical periods (e.g., "типичный для {era|постимпрессионизма} подход...")
-   - `{artist|имя}` - when referencing artist influences (e.g., "напоминает манеру {artist|Ван Гога}...")
+2. **INLINE MARKERS**: Insert special markers that REPLACE the term in text (DO NOT duplicate!). The marker contains the display text - do not write it twice!
+
+   CORRECT examples (marker REPLACES the word):
+   - "глубокий {color|#4f6b92|холодный синий} создаёт атмосферу" ✓
+   - "характерная {technique|импасто} техника" ✓
+   - "напоминает манеру {artist|Ван Гога}" ✓
    
-   IMPORTANT: Use SINGLE curly braces { }, NOT double {{ }}!
+   WRONG examples (text duplicated - NEVER DO THIS):
+   - "глубокий холодный синий {color|#4f6b92|холодный синий}" ✗
+   - "характерная импасто {technique|импасто}" ✗
+   
+   Marker formats with SINGLE curly braces:
+   - `{color|#hexcode|название}` - for colors, hex code will show as colored square
+   - `{technique|термин}` - for techniques (импасто, лессировка, etc.)
+   - `{composition|термин}` - for composition (правило третей, золотое сечение)
+   - `{mood|настроение}` - for mood/emotion
+   - `{era|период}` - for historical period/movement
+   - `{artist|имя}` - for artist references
 
 3. **STRUCTURE**: Use Markdown headings (##, ###) to organize into sections:
-   - ## Визуальное впечатление (first impression, general overview)
-   - ## Колористическое решение (detailed color analysis with multiple {{color}} markers)
-   - ## Композиционный анализ (composition breakdown with {{composition}} markers)
-   - ## Техника исполнения (technique analysis with {{technique}} markers)
-   - ## Художественные влияния (influences with {{artist}} markers)
-   - ## Историко-культурный контекст (with {{era}} markers)
-   - ## Эмоциональное воздействие (emotional impact with {{mood}} markers)
+   - ## Визуальное впечатление
+   - ## Колористическое решение  
+   - ## Композиционный анализ
+   - ## Техника исполнения
+   - ## Художественные влияния
+   - ## Историко-культурный контекст
+   - ## Эмоциональное воздействие
    - ## Заключение
 
-4. **DEPTH**: For each section, provide:
-   - Specific observations tied to the data
-   - Art historical context
-   - Comparative analysis
-   - Interpretive insights
+4. **DEPTH**: For each section provide specific observations, art historical context, and interpretive insights.
 
-5. **LANGUAGE**: Write in Russian. Use scholarly but accessible language. Be specific, not generic.
+5. **LANGUAGE**: Write in Russian. Scholarly but accessible.
 
-6. **EVIDENCE-BASED**: Every major claim should be supported by a marker citation showing what visual evidence led to that conclusion.
+6. **MARKERS AS REPLACEMENTS**: Remember - the marker label IS the text that will display. Never write the same word before the marker!
 
-IMPORTANT: This should feel like reading a museum catalog entry by a senior curator, not a superficial overview. Go deep into each aspect."""
+IMPORTANT: This should feel like reading a museum catalog entry by a senior curator."""
 
 
 def build_summary_prompt(

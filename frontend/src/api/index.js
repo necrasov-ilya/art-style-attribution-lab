@@ -61,6 +61,8 @@ export const historyAPI = {
   getAll: (limit = 50, offset = 0) => api.get(`/history?limit=${limit}&offset=${offset}`),
   delete: (id) => api.delete(`/history/${id}`),
   clear: () => api.delete('/history'),
+  updateDeepAnalysis: (id, deepAnalysisResult) => 
+    api.patch(`/history/${id}/deep-analysis`, { deep_analysis_result: deepAnalysisResult }),
 }
 
 // Deep Analysis API

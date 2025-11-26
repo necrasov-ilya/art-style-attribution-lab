@@ -26,6 +26,9 @@ class AnalysisHistory(Base):
     # Full analysis result as JSON
     analysis_result = Column(JSON, nullable=False)
     
+    # Deep analysis result as JSON (optional, added later)
+    deep_analysis_result = Column(JSON, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     # Relationship

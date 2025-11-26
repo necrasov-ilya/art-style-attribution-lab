@@ -158,6 +158,7 @@ class HistoryItemResponse(BaseModel):
     top_artist_slug: str
     created_at: datetime
     analysis_result: Dict[str, Any]
+    deep_analysis_result: Optional[Dict[str, Any]] = None  # Deep analysis if performed
     
     class Config:
         from_attributes = True

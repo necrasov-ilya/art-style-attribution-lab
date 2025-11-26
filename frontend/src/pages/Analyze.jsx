@@ -23,38 +23,118 @@ const MARKER_ICONS = {
   info: Info,
 }
 
-// Inline marker component for rendering citation badges in text
-const InlineMarker = ({ type, value, label, icon }) => {
+// Simple tooltip explanations for marker types
+const MARKER_EXPLANATIONS = {
+  color: (label, value) => `Цвет "${label}" (${value}) — один из ключевых оттенков в палитре произведения`,
+  technique: (label) => `"${label}" — художественный приём или техника исполнения`,
+  composition: (label) => `"${label}" — композиционный принцип организации пространства`,
+  mood: (label) => `"${label}" — эмоциональное настроение, передаваемое произведением`,
+  era: (label) => `"${label}" — художественное направление или исторический период`,
+  artist: (label) => `${label} — художник, чьё влияние прослеживается в работе`,
+}
+
+// Global tooltip state - only one tooltip open at a time
+let globalActiveTooltip = null
+let globalTooltipSetter = null
+
+// Inline marker component with tooltip
+const InlineMarker = ({ type, value, label, icon, markerId }) => {
+  const [showTooltip, setShowTooltip] = useState(false)
+  
+  // Close this tooltip when another opens
+  useEffect(() => {
+    const checkAndClose = () => {
+      if (globalActiveTooltip !== markerId && showTooltip) {
+        setShowTooltip(false)
+      }
+    }
+    const interval = setInterval(checkAndClose, 50)
+    return () => clearInterval(interval)
+  }, [markerId, showTooltip])
+  
+  const handleClick = () => {
+    if (showTooltip) {
+      setShowTooltip(false)
+      globalActiveTooltip = null
+    } else {
+      // Close any other open tooltip
+      globalActiveTooltip = markerId
+      setShowTooltip(true)
+    }
+  }
   const IconComponent = MARKER_ICONS[icon] || Info
   
-  // Color marker with swatch
+  const explanation = MARKER_EXPLANATIONS[type]?.(label, value) || `${label}`
+  
+  // Color marker - just a colored square with hex on hover
   if (type === 'color' && value.startsWith('#')) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 bg-white/10 rounded-full text-sm border border-white/20 hover:border-gold-400/50 transition-colors cursor-default group">
+      <span className="relative inline-block mx-0.5 group">
         <span 
-          className="w-3 h-3 rounded-full border border-white/30 shadow-sm" 
+          className="inline-block w-4 h-4 rounded border border-white/40 shadow-sm cursor-pointer align-middle hover:scale-125 transition-transform"
           style={{ backgroundColor: value }}
+          onClick={handleClick}
+          title={`${label}: ${value}`}
         />
-        <span className="text-gray-200 group-hover:text-white transition-colors">{label}</span>
+        {/* Tooltip */}
+        <AnimatePresence>
+          {showTooltip && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 5 }}
+              className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-charcoal-800 border border-white/20 rounded-lg shadow-xl text-sm whitespace-nowrap"
+            >
+              <div className="flex items-center gap-2">
+                <span 
+                  className="w-5 h-5 rounded border border-white/30" 
+                  style={{ backgroundColor: value }}
+                />
+                <span className="text-white font-medium">{label}</span>
+                <span className="text-gray-400 font-mono text-xs">{value}</span>
+              </div>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-charcoal-800" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </span>
     )
   }
   
   // Style-based marker colors
   const markerStyles = {
-    technique: 'bg-purple-500/20 border-purple-500/30 text-purple-200 hover:border-purple-400',
-    composition: 'bg-blue-500/20 border-blue-500/30 text-blue-200 hover:border-blue-400',
-    mood: 'bg-pink-500/20 border-pink-500/30 text-pink-200 hover:border-pink-400',
-    era: 'bg-amber-500/20 border-amber-500/30 text-amber-200 hover:border-amber-400',
-    artist: 'bg-green-500/20 border-green-500/30 text-green-200 hover:border-green-400',
+    technique: 'bg-purple-500/20 border-purple-500/30 text-purple-200 hover:border-purple-400 hover:bg-purple-500/30',
+    composition: 'bg-blue-500/20 border-blue-500/30 text-blue-200 hover:border-blue-400 hover:bg-blue-500/30',
+    mood: 'bg-pink-500/20 border-pink-500/30 text-pink-200 hover:border-pink-400 hover:bg-pink-500/30',
+    era: 'bg-amber-500/20 border-amber-500/30 text-amber-200 hover:border-amber-400 hover:bg-amber-500/30',
+    artist: 'bg-green-500/20 border-green-500/30 text-green-200 hover:border-green-400 hover:bg-green-500/30',
   }
   
   const style = markerStyles[type] || 'bg-white/10 border-white/20 text-gray-200'
   
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 rounded-full text-sm border transition-colors cursor-default ${style}`}>
-      <IconComponent size={12} className="opacity-70" />
-      <span>{label}</span>
+    <span className="relative inline-block">
+      <span 
+        className={`inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-full text-sm border transition-all cursor-pointer ${style}`}
+        onClick={handleClick}
+      >
+        <IconComponent size={12} className="opacity-70" />
+        <span>{label}</span>
+      </span>
+      {/* Tooltip */}
+      <AnimatePresence>
+        {showTooltip && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 5 }}
+            className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-charcoal-800 border border-white/20 rounded-lg shadow-xl text-sm max-w-xs"
+          >
+            <p className="text-gray-300">{explanation}</p>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-charcoal-800" />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </span>
   )
 }
@@ -109,7 +189,8 @@ const RichTextWithMarkers = ({ text, markers = [] }) => {
     
     return parts.map((part, i) => {
       if (part.type === 'marker') {
-        return <InlineMarker key={i} type={part.markerType} value={part.value} label={part.label} icon={getMarkerIcon(part.markerType)} />
+        const markerId = `${part.markerType}-${part.value}-${i}`
+        return <InlineMarker key={i} type={part.markerType} value={part.value} label={part.label} icon={getMarkerIcon(part.markerType)} markerId={markerId} />
       }
       return <span key={i}>{part.content}</span>
     })
@@ -205,6 +286,9 @@ function Analyze() {
   const [deepAnalysisStep, setDeepAnalysisStep] = useState(0)
   const [deepAnalysisResults, setDeepAnalysisResults] = useState(null)
   const [deepAnalysisError, setDeepAnalysisError] = useState('')
+  
+  // Current history item id (for saving deep analysis)
+  const [currentHistoryItemId, setCurrentHistoryItemId] = useState(null)
 
   // Deep Analysis Steps for progress indicator
   const DEEP_ANALYSIS_STEPS = [
@@ -238,6 +322,17 @@ function Analyze() {
     setFile(null)
     setPreview(item.image_url)
     setResult(item.analysis_result)
+    setCurrentHistoryItemId(item.id)
+    // Restore deep analysis if exists
+    if (item.deep_analysis_result) {
+      setDeepAnalysisResults(item.deep_analysis_result)
+      setDeepAnalysisActive(false)
+      setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
+    } else {
+      setDeepAnalysisResults(null)
+      setDeepAnalysisActive(false)
+      setDeepAnalysisStep(0)
+    }
     setShowHistory(false)
     setTimeout(() => {
       window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
@@ -255,6 +350,7 @@ function Analyze() {
     setError('')
     setResult(null)
     setGeneratedImages(null)
+    setCurrentHistoryItemId(null)
     // Reset deep analysis state
     setDeepAnalysisActive(false)
     setDeepAnalysisStep(0)
@@ -300,6 +396,29 @@ function Analyze() {
       clearInterval(stepInterval)
       setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
       setDeepAnalysisResults(response.data)
+      
+      // Save deep analysis to history for authenticated users
+      if (!isGuest && currentHistoryItemId) {
+        try {
+          await historyAPI.updateDeepAnalysis(currentHistoryItemId, response.data)
+          loadHistory() // Refresh history
+        } catch (saveErr) {
+          console.warn('Failed to save deep analysis to history:', saveErr)
+        }
+      } else if (!isGuest && !currentHistoryItemId) {
+        // If no currentHistoryItemId, try to find it from the latest history item
+        try {
+          const historyRes = await historyAPI.getAll(1, 0)
+          const latestItem = historyRes.data.items?.[0]
+          if (latestItem && latestItem.image_url === result.image_path) {
+            setCurrentHistoryItemId(latestItem.id)
+            await historyAPI.updateDeepAnalysis(latestItem.id, response.data)
+            loadHistory()
+          }
+        } catch (e) {
+          console.warn('Could not save deep analysis to history:', e)
+        }
+      }
       
     } catch (err) {
       console.error('Deep analysis failed:', err)
@@ -750,53 +869,53 @@ function Analyze() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                     >
-                      {/* Reset Button */}
-                      <div className="flex justify-end mb-6">
-                        <button 
-                          onClick={resetDeepAnalysis}
-                          className="text-sm text-gray-400 hover:text-white flex items-center gap-2"
-                        >
-                          <X size={16} /> Закрыть
-                        </button>
-                      </div>
-                      
-                      {/* Color Palette Preview - compact visualization */}
+                      {/* Color Palette Moodboard */}
                       {deepAnalysisResults.color_features?.dominant_colors && (
-                        <div className="flex h-3 w-full rounded-full overflow-hidden shadow-lg mb-8">
-                          {deepAnalysisResults.color_features.dominant_colors.slice(0, 7).map((c, i) => (
-                            <div 
-                              key={i} 
-                              className="flex-1 first:rounded-l-full last:rounded-r-full" 
-                              style={{ backgroundColor: c.hex }}
-                              title={`${c.hex} (${(c.percentage * 100).toFixed(0)}%)`}
-                            />
-                          ))}
+                        <div className="mb-8">
+                          <div className="flex items-center gap-3 mb-4">
+                            <Palette className="w-5 h-5 text-gold-400" />
+                            <span className="text-sm text-gray-400 uppercase tracking-wider">Цветовая палитра</span>
+                          </div>
+                          <div className="flex h-16 rounded-xl overflow-hidden shadow-lg border border-white/10">
+                            {deepAnalysisResults.color_features.dominant_colors.map((color, i) => (
+                              <div 
+                                key={i}
+                                className="flex-1 relative group cursor-pointer transition-all hover:flex-[1.5]"
+                                style={{ backgroundColor: color.hex }}
+                                title={`${color.name}: ${color.hex} (${(color.percentage * 100).toFixed(1)}%)`}
+                              >
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                                  <span className="text-white text-xs font-mono">{color.hex}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                       
                       {/* Unified Summary - THE MAIN CONTENT */}
                       {deepAnalysisResults.summary && (
                         <div className="prose prose-invert prose-lg max-w-none">
-                          {/* Legend for inline markers */}
-                          <div className="flex flex-wrap gap-3 mb-8 p-4 bg-black/20 rounded-lg border border-white/5 not-prose">
-                            <span className="text-xs text-gray-500">Интерактивные метки:</span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
-                              <span className="w-3 h-3 rounded-full bg-gradient-to-br from-pink-400 to-purple-500"></span> Цвет
+                          {/* Compact legend */}
+                          <div className="flex flex-wrap items-center gap-4 mb-6 text-xs text-gray-500 not-prose">
+                            <span>Нажмите на метку для пояснения:</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="w-3 h-3 rounded bg-gradient-to-br from-blue-400 to-purple-500"></span> цвета
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-purple-400">
-                              <Brush size={12} /> Техника
+                            <span className="inline-flex items-center gap-1 text-purple-400">
+                              <Brush size={10} /> техника
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
-                              <Layers size={12} /> Композиция
+                            <span className="inline-flex items-center gap-1 text-blue-400">
+                              <Layers size={10} /> композиция
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-pink-400">
-                              <Heart size={12} /> Настроение
+                            <span className="inline-flex items-center gap-1 text-pink-400">
+                              <Heart size={10} /> настроение
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
-                              <Clock size={12} /> Эпоха
+                            <span className="inline-flex items-center gap-1 text-amber-400">
+                              <Clock size={10} /> эпоха
                             </span>
-                            <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
-                              <User size={12} /> Художник
+                            <span className="inline-flex items-center gap-1 text-green-400">
+                              <User size={10} /> художник
                             </span>
                           </div>
                           
@@ -816,59 +935,76 @@ function Analyze() {
                 </div>
               </div>
 
-              {/* Generation Studio */}
-              <div className="border-t border-white/10 pt-24">
-                <h3 className="font-serif text-4xl text-white mb-8 text-center">AI Переосмысление</h3>
-                <p className="text-center text-gray-400 mb-12 max-w-2xl mx-auto">
-                  Визуализируйте это произведение в разных контекстах или вариациях, используя нашу генеративную модель.
-                </p>
-                
-                <div className="flex gap-4 mb-12 max-w-2xl mx-auto">
-                  <input 
-                    type="text" 
-                    value={generationPrompt}
-                    onChange={(e) => setGenerationPrompt(e.target.value)}
-                    placeholder="Опишите вариацию (например, 'в штормовую погоду')"
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-6 py-4 text-white placeholder-gray-500 focus:border-gold-500 focus:outline-none transition-colors"
-                  />
-                  <button 
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    className="px-8 py-4 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors text-sm uppercase tracking-wider disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {generating ? 'Генерация...' : 'Создать'}
-                  </button>
+              {/* Generation Studio - Redesigned to match Deep Analysis */}
+              <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <Brush size={120} />
                 </div>
-
-                {generationError && (
-                  <div className="mb-8 text-red-400 text-center bg-red-500/10 p-4 rounded-lg border border-red-500/20">{generationError}</div>
-                )}
-
-                {generatedImages?.images && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {generatedImages.images.map((img, i) => (
-                      <div key={i} className="aspect-square bg-white/5 relative group overflow-hidden rounded-xl border border-white/10">
-                        <img src={img.url} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                          <button 
-                            onClick={() => handleDownload(img.url, `generated-${i}.png`)}
-                            className="p-4 bg-white text-black rounded-full hover:scale-110 transition-transform shadow-xl"
-                            title="Скачать"
-                          >
-                            <Download size={24} />
-                          </button>
-                          <button 
-                            onClick={() => window.open(img.url, '_blank')}
-                            className="p-4 bg-white/10 text-white backdrop-blur rounded-full hover:bg-white hover:text-black transition-all shadow-xl"
-                            title="Открыть оригинал"
-                          >
-                            <Maximize2 size={24} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="font-serif text-3xl text-white">AI Переосмысление</h3>
+                    <span className="text-xs text-purple-400 border border-purple-500/30 px-3 py-1 rounded-full bg-purple-500/10 font-bold tracking-wider">ГЕНЕРАЦИЯ</span>
                   </div>
-                )}
+                  
+                  <p className="text-gray-400 mb-8 max-w-2xl">
+                    Визуализируйте это произведение в разных контекстах или вариациях, используя нашу генеративную модель.
+                  </p>
+                  
+                  {/* Input inside the card */}
+                  <div className="flex gap-4 mb-8">
+                    <input 
+                      type="text" 
+                      value={generationPrompt}
+                      onChange={(e) => setGenerationPrompt(e.target.value)}
+                      placeholder="Опишите вариацию (например, 'в штормовую погоду')"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-6 py-4 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none transition-colors"
+                    />
+                    <button 
+                      onClick={handleGenerate}
+                      disabled={generating}
+                      className="px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-400 text-white font-bold rounded-xl hover:shadow-[0_0_30px_rgba(168,85,247,0.3)] transition-all relative overflow-hidden group disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <span className="relative z-10 flex items-center gap-2">
+                        <Brush size={18} />
+                        {generating ? 'Генерация...' : 'Создать'}
+                      </span>
+                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+                    </button>
+                  </div>
+
+                  {generationError && (
+                    <div className="mb-8 p-4 bg-red-900/30 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                      {generationError}
+                    </div>
+                  )}
+
+                  {generatedImages?.images && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {generatedImages.images.map((img, i) => (
+                        <div key={i} className="aspect-square bg-white/5 relative group overflow-hidden rounded-xl border border-white/10">
+                          <img src={img.url} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                            <button 
+                              onClick={() => handleDownload(img.url, `generated-${i}.png`)}
+                              className="p-4 bg-white text-black rounded-full hover:scale-110 transition-transform shadow-xl"
+                              title="Скачать"
+                            >
+                              <Download size={24} />
+                            </button>
+                            <button 
+                              onClick={() => window.open(img.url, '_blank')}
+                              className="p-4 bg-white/10 text-white backdrop-blur rounded-full hover:bg-white hover:text-black transition-all shadow-xl"
+                              title="Открыть оригинал"
+                            >
+                              <Maximize2 size={24} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
             </div>
