@@ -94,7 +94,8 @@ async def analyze_image(
     
     try:
         # Get full ML predictions (artists, genres, styles)
-        predictions = get_full_predictions(str(file_path), top_k=3)
+        # Uses ML_TOP_K and ML_INCLUDE_UNKNOWN_ARTIST from settings
+        predictions = get_full_predictions(str(file_path))
         
         # Convert to Pydantic models
         top_artists = [

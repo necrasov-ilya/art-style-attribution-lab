@@ -87,10 +87,14 @@ def predict_top_artists(image_path: str, top_k: int = 3):
     return result["artists"]
 
 
-def predict_full(image_path: str, top_k: int = 3):
+def predict_full(image_path: str, top_k: int = 3, include_unknown_artist: bool = False):
     """
     Full prediction returning artists, genres, and styles.
-    Filters out 'Unknown' categories.
+    
+    Args:
+        image_path: Path to the image file
+        top_k: Number of top predictions to return
+        include_unknown_artist: If True, include "Unknown Artist" in results
     """
     x = preprocess_image(image_path)
     predictions = model.predict(x, verbose=0)
@@ -98,12 +102,13 @@ def predict_full(image_path: str, top_k: int = 3):
     if not isinstance(predictions, dict):
         raise TypeError(f"Expected dict from model.predict, got {type(predictions)}")
 
-    # Artist predictions (filter Unknown Artist)
+    # Artist predictions (optionally filter Unknown Artist)
     artist_logits = predictions["artist"][0]
     artist_probs = tf.nn.softmax(artist_logits).numpy()
+    artist_ignore = [] if include_unknown_artist else [UNKNOWN_ARTIST_IDX]
     artists = get_top_predictions(
         artist_probs, ARTIST_NAMES, top_k, 
-        ignore_indices=[UNKNOWN_ARTIST_IDX]
+        ignore_indices=artist_ignore
     )
     # Convert name to artist_slug format for compatibility
     for a in artists:

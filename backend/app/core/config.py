@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # ML model path
     ML_DIR: Path = Path(__file__).parent.parent.parent.parent / "ml"
     
+    # ML Prediction settings
+    ML_INCLUDE_UNKNOWN_ARTIST: bool = False  # Include "Unknown Artist" in predictions
+    ML_TOP_K: int = 3  # Number of top predictions (use 4 if including Unknown)
+    
     # LLM Configuration
     LLM_PROVIDER: Literal["openai", "openrouter", "ollama", "none"] = "none"
     
