@@ -42,8 +42,9 @@ function Analyze() {
 
   // Scroll parallax hooks
   const { scrollYProgress } = useScroll()
-  const imageScale = useTransform(scrollYProgress, [0, 1], [1, 0.8])
-  const imageOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
+  const imageScale = useTransform(scrollYProgress, [0, 1], [1, 0.9])
+  const imageOpacity = useTransform(scrollYProgress, [0, 0.6], [1, 0])
+  const imageY = useTransform(scrollYProgress, [0, 1], [0, 150])
 
   // Load history
   useEffect(() => {
@@ -56,10 +57,20 @@ function Analyze() {
     historyAPI.getAll().then(res => setHistory(res.data.items || [])).catch(console.error)
   }
 
+  const handleHistoryItemClick = (item) => {
+    setFile(null)
+    setPreview(item.image_url)
+    setResult(item.analysis_result)
+    setShowHistory(false)
+    setTimeout(() => {
+      window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
+    }, 300)
+  }
+
   const handleFileSelect = (selectedFile) => {
     if (!selectedFile) return
     if (selectedFile.size > 10 * 1024 * 1024) {
-      setError('File size must be under 10MB')
+      setError('Размер файла должен быть меньше 10MB')
       return
     }
     setFile(selectedFile)
@@ -83,7 +94,7 @@ function Analyze() {
         window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
       }, 100)
     } catch (err) {
-      setError('Analysis failed. Please try again.')
+      setError('Ошибка анализа. Попробуйте снова.')
     } finally {
       setLoading(false)
     }
@@ -115,7 +126,7 @@ function Analyze() {
       })
       setGeneratedImages(response.data)
     } catch (err) {
-      setGenerationError('Generation failed.')
+      setGenerationError('Ошибка генерации.')
     } finally {
       setGenerating(false)
     }
@@ -156,7 +167,7 @@ function Analyze() {
             <button 
               onClick={() => setShowHistory(true)}
               className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-all"
-              title="History"
+              title="История"
             >
               <History size={20} />
             </button>
@@ -167,7 +178,7 @@ function Analyze() {
               onClick={() => { logout(); navigate('/login'); }} 
               className="px-6 py-2 bg-white text-black font-medium text-sm hover:bg-gray-200 transition-colors rounded-sm shadow-lg"
             >
-              Sign In
+              Войти
             </button>
           ) : (
             <button onClick={logout} className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-all">
@@ -197,7 +208,7 @@ function Analyze() {
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-8">
-                  <h2 className="font-serif text-xl text-white">Collection History</h2>
+                  <h2 className="font-serif text-xl text-white">История коллекции</h2>
                   <button onClick={() => setShowHistory(false)} className="text-gray-400 hover:text-white">
                     <X size={20} />
                   </button>
@@ -207,11 +218,15 @@ function Analyze() {
                   {history.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
                       <Clock className="w-8 h-8 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">No analysis history yet</p>
+                      <p className="text-sm">История пуста</p>
                     </div>
                   ) : (
                     history.map((item) => (
-                      <div key={item.id} className="group relative aspect-video bg-black/40 border border-white/5 hover:border-gold-500/30 transition-all rounded overflow-hidden cursor-pointer">
+                      <div 
+                        key={item.id} 
+                        onClick={() => handleHistoryItemClick(item)}
+                        className="group relative aspect-video bg-black/40 border border-white/5 hover:border-gold-500/30 transition-all rounded overflow-hidden cursor-pointer"
+                      >
                         <img src={item.image_url} alt="" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent p-4 flex flex-col justify-end">
                           <p className="text-white font-serif text-sm truncate">{formatName(item.top_artist_slug)}</p>
@@ -243,7 +258,7 @@ function Analyze() {
         )}
 
         <motion.div 
-          style={{ scale: result ? imageScale : 1 }}
+          style={{ scale: result ? imageScale : 1, y: result ? imageY : 0 }}
           className="relative z-10 w-full max-w-5xl mx-auto flex flex-col items-center"
         >
           <AnimatePresence mode="wait">
@@ -280,14 +295,17 @@ function Analyze() {
                     <div className="w-16 h-16 border border-white/20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-500">
                       <Upload className="w-6 h-6 text-gray-400 group-hover:text-white transition-colors" />
                     </div>
-                    <h2 className="font-serif text-3xl text-white mb-3">Upload Artwork</h2>
-                    <p className="text-gray-400 font-light tracking-wide text-sm">Drag & drop or click to select</p>
+                    <h2 className="font-serif text-3xl text-white mb-3">Загрузить изображение</h2>
+                    <p className="text-gray-400 font-light tracking-wide text-sm">Перетащите или нажмите для выбора</p>
                   </div>
                 </div>
               </motion.div>
             ) : (
               <motion.div 
                 layoutId="preview-image"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.3 } }}
                 className="relative w-full flex flex-col items-center"
               >
                 <div className="relative shadow-2xl group">
@@ -305,8 +323,8 @@ function Analyze() {
                   {loading && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="w-full h-full bg-black/20 backdrop-blur-[2px] animate-pulse" />
-                      <div className="absolute text-gold-500 font-serif tracking-widest text-sm uppercase animate-bounce">
-                        Analyzing...
+                      <div className="absolute text-gold-500 font-serif tracking-widest text-2xl uppercase animate-bounce drop-shadow-lg">
+                        Анализ...
                       </div>
                     </div>
                   )}
@@ -318,7 +336,7 @@ function Analyze() {
                         onClick={handleAnalyze}
                         className="px-8 py-3 bg-white text-black font-serif font-medium tracking-wide hover:bg-gray-200 transition-colors shadow-lg whitespace-nowrap"
                       >
-                        Analyze Artwork
+                        Анализировать
                       </button>
                     )}
                     <button 
@@ -341,7 +359,7 @@ function Analyze() {
             animate={{ opacity: 1 }}
             className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/50 flex flex-col items-center gap-2 animate-bounce"
           >
-            <span className="text-xs uppercase tracking-widest">Scroll to Discover</span>
+            <span className="text-xs uppercase tracking-widest">Листайте вниз</span>
             <ChevronRight className="rotate-90" />
           </motion.div>
         )}
@@ -367,7 +385,7 @@ function Analyze() {
                   className="inline-block mb-6"
                 >
                   <span className="px-4 py-1.5 border border-gold-500/30 rounded-full text-gold-500 text-xs font-bold tracking-[0.2em] uppercase bg-gold-500/5">
-                    Attribution Report
+                    Отчет об атрибуции
                   </span>
                 </motion.div>
                 
@@ -402,15 +420,15 @@ function Analyze() {
               <div className="mb-24 grid grid-cols-3 gap-8 border-y border-white/10 py-12">
                 <div className="text-center border-r border-white/10">
                   <span className="block text-4xl font-serif text-white mb-2">{(result.top_artists[0].probability * 100).toFixed(1)}%</span>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">Match Confidence</span>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">Уверенность</span>
                 </div>
                 <div className="text-center border-r border-white/10">
                   <span className="block text-4xl font-serif text-white mb-2">#{result.top_artists[0].index}</span>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">Database Rank</span>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">Ранг в базе</span>
                 </div>
                 <div className="text-center">
                   <span className="block text-4xl font-serif text-white mb-2">AI</span>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">Analysis Model</span>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">AI Модель</span>
                 </div>
               </div>
 
@@ -437,17 +455,17 @@ function Analyze() {
                 
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-8">
-                    <h3 className="font-serif text-3xl text-white">Deep Analysis</h3>
+                    <h3 className="font-serif text-3xl text-white">Глубокий анализ</h3>
                     <span className="text-xs text-gold-500 border border-gold-500/30 px-3 py-1 rounded-full bg-gold-500/10 font-bold tracking-wider">AI PRO SUITE</span>
                   </div>
 
                   {!deepAnalysisActive ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {[
-                        { icon: Palette, label: "Color Psychology", desc: "Emotional impact of palette" },
-                        { icon: Layers, label: "Composition", desc: "Golden ratio & balance" },
-                        { icon: BookOpen, label: "Historical Context", desc: "Era & influences" },
-                        { icon: Brush, label: "Technique", desc: "Brushwork analysis" }
+                        { icon: Palette, label: "Психология цвета", desc: "Эмоциональное влияние палитры" },
+                        { icon: Layers, label: "Композиция", desc: "Золотое сечение и баланс" },
+                        { icon: BookOpen, label: "Исторический контекст", desc: "Эпоха и влияния" },
+                        { icon: Brush, label: "Техника", desc: "Анализ мазков кисти" }
                       ].map((item, i) => (
                         <button 
                           key={i}
@@ -464,7 +482,7 @@ function Analyze() {
                         className="col-span-1 md:col-span-2 mt-4 py-6 bg-gradient-to-r from-gold-600 to-gold-400 text-black font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(212,175,55,0.3)] transition-all relative overflow-hidden group rounded-xl"
                       >
                         <span className="relative z-10 flex items-center justify-center gap-3">
-                          <Sparkles size={20} /> Run Full Deep Analysis Pipeline
+                          <Sparkles size={20} /> Запустить полный глубокий анализ
                         </span>
                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                       </button>
@@ -478,17 +496,17 @@ function Analyze() {
                           <Loader2 className="w-10 h-10 text-gold-500 animate-spin mx-auto mb-6" />
                           <p className="text-gold-200 font-serif text-2xl animate-pulse">
                             {[
-                              "Extracting color palette...",
-                              "Analyzing compositional structure...",
-                              "Querying historical database...",
-                              "Synthesizing final report..."
+                              "Извлечение цветовой палитры...",
+                              "Анализ композиционной структуры...",
+                              "Запрос к исторической базе данных...",
+                              "Синтез финального отчета..."
                             ][deepAnalysisStep]}
                           </p>
                         </div>
                       ) : (
                         <div className="text-left animate-fade-in">
                           <div className="mb-8">
-                            <h4 className="text-gold-400 text-sm uppercase tracking-wider mb-4 font-bold">Dominant Palette</h4>
+                            <h4 className="text-gold-400 text-sm uppercase tracking-wider mb-4 font-bold">Доминирующая палитра</h4>
                             <div className="flex h-16 w-full rounded-lg overflow-hidden shadow-lg">
                               {['#2A1B15', '#8B4513', '#CD853F', '#DEB887', '#F5DEB3'].map(c => (
                                 <div key={c} className="flex-1 hover:flex-[1.5] transition-all duration-300" style={{ backgroundColor: c }} title={c} />
@@ -497,9 +515,9 @@ function Analyze() {
                           </div>
                           
                           <div className="space-y-6 text-gray-300 leading-relaxed text-lg">
-                            <p><strong className="text-white block mb-1">Color Psychology</strong> The dominance of earth tones (Sienna, Ochre) suggests a grounding, organic atmosphere typical of the period.</p>
-                            <p><strong className="text-white block mb-1">Composition</strong> The subject is placed according to the rule of thirds, creating a dynamic yet balanced visual weight.</p>
-                            <p><strong className="text-white block mb-1">Technique</strong> Visible impasto strokes indicate a rapid, expressive application of paint, characteristic of the artist's later years.</p>
+                            <p><strong className="text-white block mb-1">Психология цвета</strong> Доминирование земляных тонов (Сиена, Охра) предполагает заземляющую, органическую атмосферу, типичную для этого периода.</p>
+                            <p><strong className="text-white block mb-1">Композиция</strong> Объект расположен в соответствии с правилом третей, создавая динамичный, но сбалансированный визуальный вес.</p>
+                            <p><strong className="text-white block mb-1">Техника</strong> Видимые мазки импасто указывают на быстрое, экспрессивное нанесение краски, характерное для поздних лет художника.</p>
                           </div>
                         </div>
                       )}
@@ -510,9 +528,9 @@ function Analyze() {
 
               {/* Generation Studio */}
               <div className="border-t border-white/10 pt-24">
-                <h3 className="font-serif text-4xl text-white mb-8 text-center">AI Re-Imagination</h3>
+                <h3 className="font-serif text-4xl text-white mb-8 text-center">AI Переосмысление</h3>
                 <p className="text-center text-gray-400 mb-12 max-w-2xl mx-auto">
-                  Visualize this artwork in different contexts or variations using our generative model.
+                  Визуализируйте это произведение в разных контекстах или вариациях, используя нашу генеративную модель.
                 </p>
                 
                 <div className="flex gap-4 mb-12 max-w-2xl mx-auto">
@@ -520,7 +538,7 @@ function Analyze() {
                     type="text" 
                     value={generationPrompt}
                     onChange={(e) => setGenerationPrompt(e.target.value)}
-                    placeholder="Describe a variation (e.g. 'in a stormy weather')"
+                    placeholder="Опишите вариацию (например, 'в штормовую погоду')"
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-6 py-4 text-white placeholder-gray-500 focus:border-gold-500 focus:outline-none transition-colors"
                   />
                   <button 
@@ -528,7 +546,7 @@ function Analyze() {
                     disabled={generating}
                     className="px-8 py-4 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors text-sm uppercase tracking-wider disabled:opacity-50 whitespace-nowrap"
                   >
-                    {generating ? 'Dreaming...' : 'Generate'}
+                    {generating ? 'Генерация...' : 'Создать'}
                   </button>
                 </div>
 
@@ -545,14 +563,14 @@ function Analyze() {
                           <button 
                             onClick={() => handleDownload(img.url, `generated-${i}.png`)}
                             className="p-4 bg-white text-black rounded-full hover:scale-110 transition-transform shadow-xl"
-                            title="Download"
+                            title="Скачать"
                           >
                             <Download size={24} />
                           </button>
                           <button 
                             onClick={() => window.open(img.url, '_blank')}
                             className="p-4 bg-white/10 text-white backdrop-blur rounded-full hover:bg-white hover:text-black transition-all shadow-xl"
-                            title="View Full Size"
+                            title="Открыть оригинал"
                           >
                             <Maximize2 size={24} />
                           </button>
