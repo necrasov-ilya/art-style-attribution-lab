@@ -17,10 +17,10 @@ from app.models.schemas import (
 from app.services.comfyui_client import get_comfyui_client, ComfyUIError
 from app.services.llm_client import get_cached_provider, LLMError, clean_think_tags
 from app.services.prompts import (
-    IMAGE_GEN_SYSTEM_PROMPT,
-    IMAGE_GEN_WITH_DETAILS_PROMPT,
-    build_image_generation_prompt,
-    build_sd_style_prompt,
+    SD_PROMPT_SYSTEM,
+    SD_PROMPT_WITH_IDEA_SYSTEM,
+    build_sd_generation_prompt,
+    build_fallback_sd_prompt,
     SD_NEGATIVE_PROMPT
 )
 
@@ -55,38 +55,41 @@ async def generate_sd_prompt(
     """
     # Check if LLM is available
     if settings.LLM_PROVIDER.lower() == "none":
-        # Use fallback prompt
         import random
         base = user_details if user_details else random.choice(FALLBACK_SCENE_PROMPTS)
-        return build_sd_style_prompt(base, artist_name, style_name)
+        return build_fallback_sd_prompt(base, artist_name, style_name)
     
     try:
         provider = get_cached_provider()
-        user_prompt = build_image_generation_prompt(
+        user_prompt = build_sd_generation_prompt(
             artist_name, style_name, genre_name, user_details
         )
         
-        # Use different system prompt if user provided details
-        system_prompt = IMAGE_GEN_WITH_DETAILS_PROMPT if user_details else IMAGE_GEN_SYSTEM_PROMPT
+        system_prompt = SD_PROMPT_WITH_IDEA_SYSTEM if user_details else SD_PROMPT_SYSTEM
         
         response = await provider.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            max_tokens=150,
+            max_tokens=800,
             temperature=0.8
         )
         
-        # CRITICAL: Ensure response is clean before using as SD prompt
-        # Defense in depth - clean again even though llm_client should have cleaned
         prompt = clean_think_tags(response)
         prompt = prompt.strip().strip('"').strip("'")
+        
+        if not prompt:
+            logger.warning("LLM returned empty prompt after cleaning, using fallback")
+            import random
+            base = user_details if user_details else random.choice(FALLBACK_SCENE_PROMPTS)
+            return build_fallback_sd_prompt(base, artist_name, style_name)
+        
         return prompt
         
     except LLMError as e:
         logger.warning(f"LLM prompt generation failed: {e}, using fallback")
         import random
         base = user_details if user_details else random.choice(FALLBACK_SCENE_PROMPTS)
-        return build_sd_style_prompt(base, artist_name, style_name)
+        return build_fallback_sd_prompt(base, artist_name, style_name)
 
 
 async def generate_images_with_prompt(

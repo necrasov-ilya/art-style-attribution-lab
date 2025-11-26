@@ -14,7 +14,7 @@ from app.models.schemas import (
 )
 from app.services.llm_client import get_cached_provider, LLMError, clean_think_tags
 from app.services.prompts import (
-    SYSTEM_PROMPT,
+    ANALYSIS_SYSTEM_PROMPT,
     build_analysis_prompt,
     format_prediction_for_prompt
 )
@@ -83,7 +83,7 @@ async def generate_explanation(
             return _build_stub_explanation(top_artists, top_genres, top_styles)
         
         response = await provider.generate(
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=ANALYSIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             max_tokens=settings.LLM_MAX_TOKENS,
             temperature=settings.LLM_TEMPERATURE

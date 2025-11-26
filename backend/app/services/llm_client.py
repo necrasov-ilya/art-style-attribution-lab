@@ -16,39 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 def clean_think_tags(text: str) -> str:
-    """Remove <think>...</think> and similar reasoning blocks from LLM response.
-    
-    Some LLMs (especially DeepSeek R1 and other reasoning models) may include
-    internal reasoning in <think> tags. This function strips them out.
-    
-    Args:
-        text: Raw LLM response text
-        
-    Returns:
-        Cleaned text without reasoning blocks
-    """
+    """Remove <think>...</think> and <thinking>...</thinking> blocks from LLM response."""
     if not text:
         return ""
     
-    # Remove various thinking/reasoning block patterns
-    # Handles: <think>...</think>, <thinking>...</thinking>, <reasoning>...</reasoning>
-    # Also handles unclosed tags and tags with attributes
     patterns = [
-        r'<think[^>]*>[\s\S]*?</think>',      # <think>...</think> with optional attributes
-        r'<thinking[^>]*>[\s\S]*?</thinking>', # <thinking>...</thinking>
-        r'<reasoning[^>]*>[\s\S]*?</reasoning>', # <reasoning>...</reasoning>
-        r'<reflect[^>]*>[\s\S]*?</reflect>',   # <reflect>...</reflect>
-        r'<thought[^>]*>[\s\S]*?</thought>',   # <thought>...</thought>
-        r'<think[^>]*>[\s\S]*$',               # Unclosed <think> tag (takes rest of string)
-        r'<thinking[^>]*>[\s\S]*$',            # Unclosed <thinking> tag
-        r'^[\s\S]*?</think>',                   # Orphaned </think> at start
-        r'^[\s\S]*?</thinking>',                # Orphaned </thinking> at start
+        r'<think[^>]*>[\s\S]*?</think>',
+        r'<thinking[^>]*>[\s\S]*?</thinking>',
+        r'<think[^>]*>[\s\S]*$',
+        r'<thinking[^>]*>[\s\S]*$',
     ]
     
     for pattern in patterns:
         text = re.sub(pattern, '', text, flags=re.IGNORECASE)
     
-    # Clean up any resulting multiple newlines or leading/trailing whitespace
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
