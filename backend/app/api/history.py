@@ -1,4 +1,5 @@
 """History API endpoint."""
+import logging
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.models.schemas import (
     HistoryListResponse,
     ErrorResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/history", tags=["History"])
 
@@ -132,6 +135,7 @@ async def get_history(
         )
         
     except Exception as e:
+        logger.exception(f"Failed to fetch history: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch history: {str(e)}"

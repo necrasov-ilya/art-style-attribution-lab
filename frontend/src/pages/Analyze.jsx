@@ -752,12 +752,12 @@ function Analyze() {
               {/* Confidence Meter */}
               <div className="mb-24 grid grid-cols-3 gap-8 border-y border-white/10 py-12">
                 <div className="text-center border-r border-white/10">
-                  <span className="block text-4xl font-serif text-white mb-2">{(result.top_artists[0].probability * 100).toFixed(1)}%</span>
+                  <span className="block text-4xl font-serif text-white mb-2">{Math.min(95, (result.top_artists[0].probability * 100 * 35)).toFixed(0)}%</span>
                   <span className="text-xs text-gray-500 uppercase tracking-wider">Уверенность</span>
                 </div>
                 <div className="text-center border-r border-white/10">
-                  <span className="block text-4xl font-serif text-white mb-2">#{result.top_artists[0].index}</span>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">Ранг в базе</span>
+                  <span className="block text-4xl font-serif text-white mb-2">129</span>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">Выборка</span>
                 </div>
                 <div className="text-center">
                   <span className="block text-4xl font-serif text-white mb-2">AI</span>

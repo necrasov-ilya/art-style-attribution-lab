@@ -21,13 +21,15 @@ Response format (strictly follow):
 
 ### Ключевые характеристики
 - **Техника**: [brushwork, composition methods]
-- **Палитра**: [color characteristics]
+- **Палитра**: [color characteristics]  
 - **Композиция**: [compositional features]
 
-### Влияние мастеров
-**[Artist 1]** (XX%): [what specific traits connect to this artist]
-**[Artist 2]** (XX%): [what specific traits connect to this artist]
-**[Artist 3]** (XX%): [what specific traits connect to this artist]
+### О вероятном авторе
+[4-5 sentences about Artist 1 - the top predicted artist. Include their biographical context, famous works, signature techniques, and why this artwork might be attributed to them. This section should focus ONLY on the top predicted artist as the most likely creator.]
+
+### Стилистические параллели
+**[Artist 2]**: [1-2 sentences about stylistic similarities with this artist]
+**[Artist 3]**: [1-2 sentences about stylistic similarities with this artist]
 
 ### Историко-художественный контекст
 [2-3 sentences about the detected style movement, era, and cultural significance]

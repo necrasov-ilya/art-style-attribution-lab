@@ -113,33 +113,46 @@ def _build_stub_explanation(
     """Build a stub explanation when LLM is not available."""
     top_artist = top_artists[0]
     artist_name = top_artist.artist_slug.replace("-", " ").title()
-    probability_pct = round(top_artist.probability * 100, 1)
     
     # Build style info
     style_text = ""
     if top_styles and len(top_styles) > 0:
         top_style = top_styles[0]
         style_name = top_style.name.replace("_", " ").title()
-        style_text = f" The artistic style is most closely aligned with {style_name}."
+        style_text = f" Художественный стиль наиболее близок к направлению {style_name}."
     
     # Build genre info
     genre_text = ""
     if top_genres and len(top_genres) > 0:
         top_genre = top_genres[0]
         genre_name = top_genre.name.replace("_", " ").title()
-        genre_text = f" The genre appears to be {genre_name}."
+        genre_text = f" Жанр определён как {genre_name}."
     
-    # Other artists
-    other_artists = ""
+    # Other artists for parallels
+    parallels_text = ""
     if len(top_artists) > 1:
-        other_names = [a.artist_slug.replace("-", " ").title() for a in top_artists[1:]]
-        other_artists = f" Other possible influences include {', '.join(other_names)}."
+        parallels = []
+        for a in top_artists[1:3]:
+            name = a.artist_slug.replace("-", " ").title()
+            parallels.append(f"**{name}**: стилистическое сходство в технике исполнения")
+        parallels_text = "\n".join(parallels)
     
-    explanation_text = (
-        f"Based on the analysis, this artwork shows stylistic similarities "
-        f"to the work of {artist_name} ({probability_pct}% confidence).{style_text}{genre_text}"
-        f"{other_artists}"
-    )
+    explanation_text = f"""## 🎨 Художественный анализ
+Данное произведение демонстрирует характерные черты, ассоциируемые с творчеством {artist_name}.{style_text}{genre_text}
+
+### Ключевые характеристики
+- **Техника**: Требуется детальный анализ
+- **Палитра**: Требуется детальный анализ
+- **Композиция**: Требуется детальный анализ
+
+### О вероятном авторе
+{artist_name} — художник, чей стиль наиболее соответствует анализируемому произведению. Для получения подробного описания биографии, техники и контекста творчества включите LLM-провайдер в настройках системы.
+
+### Стилистические параллели
+{parallels_text if parallels_text else "Требуется LLM для анализа параллелей"}
+
+### Историко-художественный контекст
+Для получения полного историко-художественного анализа необходимо подключение к LLM-провайдеру."""
     
     return AnalysisExplanation(
         text=explanation_text,
