@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3.2"
     
     # LLM Generation settings
-    LLM_MAX_TOKENS: int = 512
+    LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
     
     # ComfyUI Configuration

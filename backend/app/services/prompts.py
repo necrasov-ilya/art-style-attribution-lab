@@ -30,9 +30,9 @@ Response format (strictly follow):
 **[Artist 3]** (XX%): [what specific traits connect to this artist]
 
 ### Историко-художественный контекст
-[1-2 sentences about the detected style movement and era]
+[2-3 sentences about the detected style movement, era, and cultural significance]
 
-Maximum 250 words. Russian language only. Markdown formatting required."""
+Provide a thorough, detailed analysis suitable for an article format. Russian language only. Markdown formatting required."""
 
 
 def build_analysis_prompt(artists: list, genres: list, styles: list) -> str:

@@ -243,17 +243,25 @@ function Analyze() {
       </AnimatePresence>
 
       {/* Hero Section (Image) */}
-      <div className="relative min-h-screen flex flex-col items-center justify-center p-8 pb-32">
+      <div className="relative min-h-screen flex flex-col items-center justify-center p-8">
         {/* Background Ambient */}
         {preview && (
           <motion.div 
             style={{ opacity: imageOpacity }}
-            className="fixed inset-0 z-0"
+            className="fixed inset-0 z-0 overflow-hidden"
           >
+            {/* Deep atmospheric background */}
             <div 
-              className="absolute inset-0 bg-cover bg-center blur-[100px] opacity-20 scale-110"
+              className="absolute inset-0 bg-cover bg-center blur-[100px] opacity-50 scale-125 saturate-200"
               style={{ backgroundImage: `url(${preview})` }}
             />
+            {/* Central focused glow */}
+            <div 
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70vw] h-[70vw] bg-cover bg-center blur-[80px] opacity-60 mix-blend-screen rounded-full animate-pulse"
+              style={{ backgroundImage: `url(${preview})` }}
+            />
+            {/* Vignette to focus attention */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_10%,rgba(5,5,5,0.9)_100%)]" />
           </motion.div>
         )}
 
@@ -308,12 +316,12 @@ function Analyze() {
                 exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.3 } }}
                 className="relative w-full flex flex-col items-center"
               >
-                <div className="relative shadow-2xl group">
+                <div className="relative shadow-2xl group w-fit mx-auto">
                   <img 
                     src={preview} 
                     alt="Preview" 
                     className={`
-                      max-h-[85vh] w-auto object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)]
+                      max-h-[70vh] w-auto object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)]
                       transition-all duration-[2000ms] ease-out
                       ${loading ? 'blur-md grayscale scale-95 opacity-80' : 'blur-0 grayscale-0 scale-100 opacity-100'}
                     `} 
@@ -328,9 +336,11 @@ function Analyze() {
                       </div>
                     </div>
                   )}
+                </div>
 
-                  {/* Controls */}
-                  <div className={`absolute -bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-4 transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}>
+                {/* Controls - centered below image */}
+                <div className={`flex flex-col items-center mt-6 transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}>
+                  <div className="flex items-center gap-4">
                     {!result && (
                       <button 
                         onClick={handleAnalyze}
@@ -346,23 +356,24 @@ function Analyze() {
                       <X size={20} />
                     </button>
                   </div>
+                  
+                  {/* Scroll Indicator - now part of the same centered column */}
+                  {result && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="mt-8 text-white/50 flex flex-col items-center gap-2 animate-bounce"
+                    >
+                      <span className="text-xs uppercase tracking-widest">Листайте вниз</span>
+                      <ChevronRight className="rotate-90" />
+                    </motion.div>
+                  )}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
         
-        {/* Scroll Indicator */}
-        {result && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/50 flex flex-col items-center gap-2 animate-bounce"
-          >
-            <span className="text-xs uppercase tracking-widest">Листайте вниз</span>
-            <ChevronRight className="rotate-90" />
-          </motion.div>
-        )}
       </div>
 
       {/* Article Section (Parallax Overlay) */}

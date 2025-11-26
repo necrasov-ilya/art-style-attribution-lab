@@ -65,11 +65,10 @@ function Register() {
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <div className="absolute inset-0 bg-[url('/images/backgrounds/auth-bg.png')] bg-cover bg-center" />
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
       </div>
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-md bg-black/60 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 p-8 md:p-10 animate-scale-in">
+      <div className="relative z-10 w-full max-w-md bg-black/100 shadow-2xl border border-white/10 p-8 md:p-10 animate-scale-in">
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4">
             <img src="/images/logo.png" alt="Logo" className="w-full h-full object-contain" />
@@ -182,7 +181,7 @@ function Register() {
 
         <p className="text-center text-sm text-gray-500 mt-8">
           Уже есть аккаунт?{' '}
-          <Link to="/login" className="font-semibold text-purple-400 hover:text-purple-300 transition-colors">
+          <Link to="/login" className="text-white hover:text-gray-300 transition-colors border-b border-white/30 pb-0.5">
             Войти
           </Link>
         </p>

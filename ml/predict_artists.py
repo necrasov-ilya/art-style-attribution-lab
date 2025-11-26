@@ -29,13 +29,12 @@ IMG_SIZE = (224, 224)
 
 
 def preprocess_image(image_path: str) -> np.ndarray:
-    """Load image, resize and apply MobileNetV2 preprocessing."""
     img = Image.open(image_path).convert("RGB")
     img = img.resize(IMG_SIZE)
-    arr = np.array(img)
-    arr = mb_preprocess(arr)
-    arr = np.expand_dims(arr, axis=0) 
+    arr = np.array(img).astype("float32")   # без mb_preprocess
+    arr = np.expand_dims(arr, axis=0)
     return arr
+
 
 
 def get_top_predictions(
