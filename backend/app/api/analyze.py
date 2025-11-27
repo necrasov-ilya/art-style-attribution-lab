@@ -2,12 +2,14 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limiter import concurrent_limiter, rate_limiter
+from app.core.file_validator import validate_image_upload
 from app.models.user import User
 from app.models.history import AnalysisHistory
 from app.models.schemas import (
@@ -36,67 +38,57 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/bmp"}
     responses={
         400: {"model": ErrorResponse},
         401: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
 )
 async def analyze_image(
+    request: Request,
     file: UploadFile = File(..., description="Image file to analyze"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Analyze an uploaded image to detect art style and predict similar artists.
-    
+
     Requires authentication via Bearer token.
-    
+    Rate limited to 10 requests per minute.
+    Cannot run simultaneously with generation or deep analysis.
+
     Returns:
     - top_artists: Top 3 artist predictions with probabilities
     - explanation: LLM-generated explanation (currently stub)
     - generated_thumbnails: 4 generated images in detected styles (currently stub)
     """
-    # Validate file extension
-    file_ext = Path(file.filename).suffix.lower() if file.filename else ""
-    if file_ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
-    
-    # Validate content type
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid content type: {file.content_type}"
-        )
-    
-    # Read file content
-    content = await file.read()
-    
-    # Check file size
-    if len(content) > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB"
-        )
-    
-    # Generate unique filename and save
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = settings.UPLOAD_DIR / unique_filename
-    
+    # Check rate limit
+    await rate_limiter.check_rate_limit(current_user.id, request.url.path)
+
+    # Acquire concurrent operation lock
+    await concurrent_limiter.acquire(current_user.id, "analyze")
+
     try:
-        with open(file_path, "wb") as f:
-            f.write(content)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {str(e)}"
-        )
-    
-    try:
+        # Validate uploaded file (extension, content-type, size, magic numbers)
+        content = await validate_image_upload(file, settings.MAX_UPLOAD_SIZE)
+
+        # Get file extension for saving
+        file_ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+
+        # Generate unique filename and save
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = settings.UPLOAD_DIR / unique_filename
+
+        try:
+            with open(file_path, "wb") as f:
+                f.write(content)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save file: {str(e)}"
+            )
+
         # Get full ML predictions (artists, genres, styles)
-        # Uses ML_TOP_K and ML_INCLUDE_UNKNOWN_ARTIST from settings
         predictions = get_full_predictions(str(file_path))
-        
+
         # Convert to Pydantic models
         top_artists = [
             ArtistPrediction(
@@ -106,7 +98,7 @@ async def analyze_image(
             )
             for p in predictions["artists"]
         ]
-        
+
         top_genres = [
             GenrePrediction(
                 index=p["index"],
@@ -115,7 +107,7 @@ async def analyze_image(
             )
             for p in predictions["genres"]
         ]
-        
+
         top_styles = [
             StylePrediction(
                 index=p["index"],
@@ -124,10 +116,10 @@ async def analyze_image(
             )
             for p in predictions["styles"]
         ]
-        
+
         # Generate LLM explanation (async)
         explanation = await generate_explanation(top_artists, top_genres, top_styles)
-        
+
         # Build response
         response = AnalysisResponse(
             success=True,
@@ -138,7 +130,7 @@ async def analyze_image(
             explanation=explanation,
             message="Analysis completed successfully"
         )
-        
+
         # Save to history (skip for guest users)
         try:
             is_guest = False
@@ -165,14 +157,19 @@ async def analyze_image(
             # Don't fail the whole request if history save fails
             db.rollback()
             print(f"Warning: Failed to save to history: {save_error}")
-        
+
         return response
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+    finally:
+        # Always release the lock
+        await concurrent_limiter.release(current_user.id, "analyze")
 
 
 @router.post(
@@ -181,26 +178,37 @@ async def analyze_image(
     responses={
         400: {"model": ErrorResponse},
         401: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
 )
 async def generate_style_images(
+    http_request: Request,
     request: GenerateRequest,
     current_user: User = Depends(get_current_user),
 ):
     """
     Generate images in a specific artistic style.
-    
+
     Uses LLM to create a prompt based on the artist/style/genre,
     optionally incorporating user-provided details.
     Then uses ComfyUI to generate images.
-    
+
+    Rate limited to 5 requests per minute.
+    Cannot run simultaneously with analysis or deep analysis.
+
     Args:
         request: Generation parameters including artist, style, genre, and optional user prompt
-        
+
     Returns:
         Generated images with the prompt used
     """
+    # Check rate limit
+    await rate_limiter.check_rate_limit(current_user.id, http_request.url.path)
+
+    # Acquire concurrent operation lock
+    await concurrent_limiter.acquire(current_user.id, "generate")
+
     try:
         # Generate images using ComfyUI service
         result = await generate_images_with_prompt(
@@ -210,7 +218,7 @@ async def generate_style_images(
             user_details=request.user_prompt,
             count=request.count
         )
-        
+
         return GenerateResponse(
             success=True,
             prompt=result["prompt"],
@@ -224,9 +232,14 @@ async def generate_style_images(
             ],
             message="Images generated successfully"
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Generation failed: {str(e)}"
         )
+    finally:
+        # Always release the lock
+        await concurrent_limiter.release(current_user.id, "generate")

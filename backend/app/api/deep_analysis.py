@@ -3,10 +3,11 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.core.rate_limiter import concurrent_limiter, rate_limiter
 from app.models.user import User
 from app.models.schemas import (
     DeepAnalysisModuleResponse,
@@ -121,19 +122,21 @@ async def analyze_single_module(
         400: {"model": ErrorResponse},
         401: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
 )
 async def run_full_analysis(
+    request: Request,
     image_path: str = Query(..., description="Path to the image (from /api/uploads/...)"),
     current_user: User = Depends(get_current_user),
 ):
     """
     Run complete deep analysis with all modules.
-    
+
     This endpoint implements a "deep research" pattern similar to Gemini Deep Research
     or ChatGPT Deep Research. It makes multiple sequential LLM calls:
-    
+
     1. **Feature Extraction**: Color, composition, scene features (parallel)
     2. **Color Psychology**: Emotional interpretation of palette
     3. **Composition Analysis**: Structure, balance, visual flow
@@ -141,22 +144,31 @@ async def run_full_analysis(
     5. **Technique Analysis**: Brushwork, light, medium estimation
     6. **Historical Context**: Era, influences, art movement connections
     7. **Summary Synthesis**: Final cohesive interpretation
-    
+
     Each step builds on previous results for comprehensive analysis.
+
+    Rate limited to 3 requests per minute.
+    Cannot run simultaneously with generation or standard analysis.
     """
+    # Check rate limit
+    await rate_limiter.check_rate_limit(current_user.id, request.url.path)
+
+    # Acquire concurrent operation lock
+    await concurrent_limiter.acquire(current_user.id, "deep_analysis")
+
     try:
         resolved_path = resolve_image_path(image_path)
-        
+
         # Get ML predictions for context
         ml_predictions = None
         try:
             ml_predictions = get_full_predictions(resolved_path, top_k=3)
         except Exception as e:
             logger.warning(f"Could not get ML predictions: {e}")
-        
+
         # Run full deep analysis
         result = await run_full_deep_analysis(resolved_path, ml_predictions)
-        
+
         return DeepAnalysisFullResponse(
             success=True,
             color=result.get("color"),
@@ -170,7 +182,7 @@ async def run_full_analysis(
             summary=result.get("summary"),
             message="Полный глубокий анализ завершён"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -179,6 +191,9 @@ async def run_full_analysis(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+    finally:
+        # Always release the lock
+        await concurrent_limiter.release(current_user.id, "deep_analysis")
 
 
 @router.get(
