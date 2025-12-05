@@ -584,7 +584,7 @@ function Analyze() {
               style={{ backgroundImage: `url(${preview})` }}
             />
             {/* Vignette to focus attention */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_10%,rgba(5,5,5,0.9)_100%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_10%,rgba(20,20,19,0.9)_100%)]" />
           </motion.div>
         )}
 
