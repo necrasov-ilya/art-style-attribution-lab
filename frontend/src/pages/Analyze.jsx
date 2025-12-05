@@ -473,13 +473,14 @@ function Analyze() {
   const formatName = (slug) => slug?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   return (
-    <div className="min-h-screen w-full bg-charcoal-950 text-alabaster-100 font-sans selection:bg-gold-500/30 relative overflow-x-hidden">
+    <div className="min-h-screen w-full bg-[#141413] text-alabaster-100 font-sans selection:bg-gold-500/30 relative overflow-x-hidden">
       <div className="fixed inset-0 bg-grain pointer-events-none z-50 opacity-50" />
       
       {/* Navigation Bar */}
       <nav className="fixed top-0 left-0 right-0 h-20 z-40 flex items-center justify-between px-8 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
         <div className="flex items-center gap-6 pointer-events-auto">
           <div className="flex items-center gap-3">
+            <img src="/images/logo.svg" alt="Logo" className="w-8 h-8" />
             <span className="font-serif text-xl tracking-wide text-white drop-shadow-lg">Heritage Frame</span>
           </div>
         </div>
@@ -705,7 +706,7 @@ function Analyze() {
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="relative z-20 bg-charcoal-950 min-h-screen border-t border-white/10 shadow-[0_-50px_100px_rgba(0,0,0,0.5)]"
+            className="relative z-20 bg-[#141413] min-h-screen border-t border-white/10 shadow-[0_-50px_100px_rgba(0,0,0,0.5)]"
           >
             <div className="max-w-4xl mx-auto px-8 py-24">
               
@@ -801,7 +802,7 @@ function Analyze() {
                       </p>
                       <button 
                         onClick={handleDeepAnalysis}
-                        className="px-12 py-6 bg-gradient-to-r from-gold-600 to-gold-400 text-black font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(212,175,55,0.3)] transition-all relative overflow-hidden group rounded-xl"
+                        className="px-12 py-6 bg-gradient-to-r from-gold-600 to-gold-400 text-white font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(172,41,84,0.3)] transition-all relative overflow-hidden group rounded-xl"
                       >
                         <span className="relative z-10 flex items-center justify-center gap-3">
                           <Sparkles size={20} /> Запустить глубокий анализ

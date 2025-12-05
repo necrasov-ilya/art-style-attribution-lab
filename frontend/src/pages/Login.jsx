@@ -67,7 +67,10 @@ function Login() {
       {/* Card */}
       <div className="relative z-10 w-full max-w-md bg-black/100 shadow-2xl border border-white/10 p-8 md:p-10 animate-scale-in">
         <div className="text-center mb-8">
-          <h2 className="font-serif text-4xl text-white mb-3 tracking-tight">Heritage Frame</h2>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <img src="/images/logo.svg" alt="Logo" className="w-10 h-10" />
+            <h2 className="font-serif text-4xl text-white tracking-tight">Heritage Frame</h2>
+          </div>
           <p className="text-gray-400 font-light tracking-wide text-sm uppercase">
             Лаборатория атрибуции цифрового искусства
           </p>

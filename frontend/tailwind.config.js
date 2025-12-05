@@ -25,7 +25,7 @@ export default {
           700: '#4f4f4f',
           800: '#454545',
           900: '#3d3d3d',
-          950: '#0a0a0a', // Deep Matte Black
+          950: '#141413', // Deep Matte Black
         },
         alabaster: {
           50: '#fcfcfc',
@@ -34,29 +34,29 @@ export default {
           300: '#e0e0e0', // Off-white text
         },
         gold: {
-          50: '#fbf8eb',
-          100: '#f5efce',
-          200: '#ede0a6',
-          300: '#e4ce76',
-          400: '#dabb4d',
-          500: '#d4af37', // Muted Gold
-          600: '#aa8c2c',
-          700: '#887023',
-          800: '#725e24',
-          900: '#635124',
+          50: '#fdf2f5',
+          100: '#fbe6eb',
+          200: '#f8cdd8',
+          300: '#f3a5b9',
+          400: '#e36d8c',
+          500: '#AC2954', // Ruby Accent
+          600: '#9a2249',
+          700: '#7f1c3c',
+          800: '#6a1833',
+          900: '#5a162d',
         },
         // Legacy mapping for compatibility
         primary: {
-          50: '#fbf8eb',
-          100: '#f5efce',
-          200: '#ede0a6',
-          300: '#e4ce76',
-          400: '#dabb4d',
-          500: '#d4af37', // Gold is the new Primary
-          600: '#aa8c2c',
-          700: '#887023',
-          800: '#725e24',
-          900: '#635124',
+          50: '#fdf2f5',
+          100: '#fbe6eb',
+          200: '#f8cdd8',
+          300: '#f3a5b9',
+          400: '#e36d8c',
+          500: '#AC2954', // Ruby is the new Primary
+          600: '#9a2249',
+          700: '#7f1c3c',
+          800: '#6a1833',
+          900: '#5a162d',
         },
       },
       animation: {

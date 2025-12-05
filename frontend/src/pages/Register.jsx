@@ -3,11 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { authAPI } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { 
-  Mail,
-  Lock,
-  User,
   ArrowRight,
-  Palette
+  Loader2
 } from 'lucide-react'
 
 function Register() {
@@ -70,14 +67,12 @@ function Register() {
       {/* Card */}
       <div className="relative z-10 w-full max-w-md bg-black/100 shadow-2xl border border-white/10 p-8 md:p-10 animate-scale-in">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4">
-            <img src="/images/logo.png" alt="Logo" className="w-full h-full object-contain" />
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <img src="/images/logo.svg" alt="Logo" className="w-10 h-10" />
+            <h2 className="font-serif text-4xl text-white tracking-tight">Heritage Frame</h2>
           </div>
-          <h2 className="text-3xl font-bold text-white tracking-tight mb-2">
-            Создать аккаунт
-          </h2>
-          <p className="text-gray-400">
-            Присоединяйтесь к сообществу Heritage Frame
+          <p className="text-gray-400 font-light tracking-wide text-sm uppercase">
+            Создание аккаунта
           </p>
         </div>
 
@@ -90,86 +85,66 @@ function Register() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300 ml-1">Имя пользователя</label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-purple-400 transition-colors">
-                <User size={20} />
-              </div>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                className="block w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
-                placeholder="username"
-                required
-                minLength={3}
-              />
-            </div>
+            <label className="text-xs font-bold text-gray-300 uppercase tracking-widest ml-1">Имя пользователя</label>
+            <input
+              type="text"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              className="block w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
+              placeholder="username"
+              required
+              minLength={3}
+            />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300 ml-1">Email</label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-purple-400 transition-colors">
-                <Mail size={20} />
-              </div>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="block w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
-                placeholder="name@example.com"
-                required
-              />
-            </div>
+            <label className="text-xs font-bold text-gray-300 uppercase tracking-widest ml-1">Email</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className="block w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
+              placeholder="curator@museum.org"
+              required
+            />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300 ml-1">Пароль</label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-purple-400 transition-colors">
-                <Lock size={20} />
-              </div>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="block w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-            </div>
+            <label className="text-xs font-bold text-gray-300 uppercase tracking-widest ml-1">Пароль</label>
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              className="block w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
+              placeholder="••••••••"
+              required
+              minLength={6}
+            />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300 ml-1">Подтвердите пароль</label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500 group-focus-within:text-purple-400 transition-colors">
-                <Lock size={20} />
-              </div>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="block w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
-                placeholder="••••••••"
-                required
-              />
-            </div>
+            <label className="text-xs font-bold text-gray-300 uppercase tracking-widest ml-1">Подтвердите пароль</label>
+            <input
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              className="block w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white/20 transition-all"
+              placeholder="••••••••"
+              required
+            />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 bg-white text-black rounded-xl font-bold hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-white/10"
+            className="w-full py-3.5 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-6 flex items-center justify-center gap-2"
           >
             {loading ? (
-              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <>
                 Создать аккаунт
@@ -179,7 +154,7 @@ function Register() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-8">
+        <p className="text-center text-xs text-gray-500 mt-8 uppercase tracking-widest">
           Уже есть аккаунт?{' '}
           <Link to="/login" className="text-white hover:text-gray-300 transition-colors border-b border-white/30 pb-0.5">
             Войти
