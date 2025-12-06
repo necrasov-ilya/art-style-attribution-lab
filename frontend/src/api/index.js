@@ -163,7 +163,7 @@ export const collaborativeAPI = {
    * @param {object} analysisData - Updated analysis data
    */
   updateAnalysis: (sessionId, analysisData) => 
-    api.patch(`/collaborative/${sessionId}/analysis`, { analysis_data: analysisData }),
+    api.patch(`/collaborative/${sessionId}`, { analysis_data: analysisData }),
 }
 
 export default api

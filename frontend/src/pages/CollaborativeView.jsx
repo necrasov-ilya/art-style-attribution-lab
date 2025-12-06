@@ -455,7 +455,7 @@ function CollaborativeView() {
                         <User size={20} className="text-white" />
                       </div>
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center flex-shrink-0 border border-gold-400/30">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border border-gold-400/30" style={{ backgroundColor: '#141413' }}>
                         <img src="/images/logo.svg" alt="OMNIA" className="w-6 h-6" />
                       </div>
                     )}
@@ -496,7 +496,7 @@ function CollaborativeView() {
                         <Brain size={20} className="text-white animate-pulse" />
                       </div>
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center flex-shrink-0 border border-gold-400/30">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border border-gold-400/30" style={{ backgroundColor: '#141413' }}>
                         <img src="/images/logo.svg" alt="OMNIA" className="w-6 h-6" />
                       </div>
                     )}

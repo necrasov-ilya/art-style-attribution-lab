@@ -100,8 +100,8 @@ async def get_session(
     top_genre = genres[0].get("name", "unknown").replace("_", " ").title() if genres else None
     
     # Check if deep analysis was performed
-    deep_analysis = session.analysis_data.get("deep_analysis_result", {})
-    has_deep_analysis = bool(deep_analysis and deep_analysis.get("text"))
+    deep_analysis = session.analysis_data.get("deep_analysis_result")
+    has_deep_analysis = bool(deep_analysis)
     
     return CollaborativeSessionPublic(
         id=session.id,
