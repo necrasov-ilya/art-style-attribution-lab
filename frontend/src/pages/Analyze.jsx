@@ -447,11 +447,41 @@ function Analyze() {
     
     const link = `${window.location.origin}/collab/${collabSession.id}`
     try {
-      await navigator.clipboard.writeText(link)
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link)
+      } else {
+        // Fallback for HTTP or older browsers
+        const textArea = document.createElement('textarea')
+        textArea.value = link
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+      }
       setLinkCopied(true)
       setTimeout(() => setLinkCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
+      // Last resort fallback
+      try {
+        const textArea = document.createElement('textarea')
+        textArea.value = link
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+        setLinkCopied(true)
+        setTimeout(() => setLinkCopied(false), 2000)
+      } catch (e) {
+        console.error('Fallback copy failed:', e)
+      }
     }
   }
 
@@ -528,6 +558,20 @@ function Analyze() {
           }
         } catch (e) {
           console.warn('Could not save deep analysis to history:', e)
+        }
+      }
+      
+      // Sync deep analysis to active collaborative session
+      if (collabSession && result) {
+        try {
+          const updatedAnalysisData = {
+            ...result,
+            deep_analysis_result: response.data
+          }
+          await collaborativeAPI.updateAnalysis(collabSession.id, updatedAnalysisData)
+          console.log('Deep analysis synced to collaborative session')
+        } catch (syncErr) {
+          console.warn('Failed to sync deep analysis to collaborative session:', syncErr)
         }
       }
       
@@ -1172,64 +1216,59 @@ function Analyze() {
                   
                   {/* After session created - show QR and link */}
                   {collabSession && (
-                    <div>
-                      {/* Status badges */}
-                      <div className="flex flex-wrap items-center gap-4 mb-8">
-                        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-400">
-                          <Users size={16} />
-                          <span className="font-medium">{collabViewers} активных</span>
-                        </div>
-                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 border border-amber-500/30 rounded-full text-amber-400">
-                          <Clock size={16} />
-                          <span className="font-mono font-medium">{formatCollabTime(collabRemainingTime)}</span>
-                        </div>
+                    <div className="flex flex-col items-center">
+                      {/* QR Code */}
+                      <div className="p-4 bg-white rounded-xl mb-6">
+                        <QRCodeSVG 
+                          value={`${window.location.origin}/collab/${collabSession.id}`}
+                          size={180}
+                          level="M"
+                          includeMargin={false}
+                        />
                       </div>
                       
-                      {/* QR Code and Link */}
-                      <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
-                        <div className="p-4 bg-white rounded-2xl">
-                          <QRCodeSVG 
-                            value={`${window.location.origin}/collab/${collabSession.id}`}
-                            size={180}
-                            level="M"
-                            includeMargin={false}
-                          />
+                      {/* Copy link button */}
+                      <button
+                        onClick={handleCopyCollabLink}
+                        className={`px-6 py-3 rounded-xl transition-all flex items-center gap-2 mb-6 ${
+                          linkCopied 
+                            ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400' 
+                            : 'bg-white/10 hover:bg-white/20 border border-white/20 text-gray-300'
+                        }`}
+                      >
+                        {linkCopied ? (
+                          <>
+                            <Check size={18} />
+                            <span>Ссылка скопирована!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={18} />
+                            <span>Скопировать ссылку</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      {/* Status badges */}
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-sm">
+                          <Users size={14} />
+                          <span>{collabViewers} активных</span>
                         </div>
-                        
-                        <div className="flex-1 w-full md:w-auto">
-                          <p className="text-gray-400 text-sm mb-3">Ссылка для участников:</p>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-gray-300 font-mono text-sm truncate">
-                              {`${window.location.origin}/collab/${collabSession.id}`}
-                            </div>
-                            <button
-                              onClick={handleCopyCollabLink}
-                              className="p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
-                              title="Копировать ссылку"
-                            >
-                              {linkCopied ? (
-                                <Check size={20} className="text-emerald-400" />
-                              ) : (
-                                <Copy size={20} className="text-gray-400" />
-                              )}
-                            </button>
-                          </div>
-                          {linkCopied && (
-                            <p className="text-emerald-400 text-sm mt-2">Ссылка скопирована!</p>
-                          )}
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-400 text-sm">
+                          <Clock size={14} />
+                          <span className="font-mono">{formatCollabTime(collabRemainingTime)}</span>
                         </div>
                       </div>
                       
                       {/* Close button */}
-                      <div className="text-center">
-                        <button
-                          onClick={handleCloseCollabSession}
-                          className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 rounded-xl transition-colors flex items-center gap-2 mx-auto"
-                        >
-                          <X size={18} />
-                          Закрыть доступ
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleCloseCollabSession}
+                        className="text-red-400 hover:text-red-300 text-sm flex items-center gap-1.5 transition-colors"
+                      >
+                        <X size={16} />
+                        Закрыть доступ
+                      </button>
                     </div>
                   )}
                 </div>

@@ -18,6 +18,8 @@ from app.models.schemas import (
     CollaborativeQuestionResponse,
     CollaborativeHeartbeatResponse,
     CollaborativeCloseResponse,
+    CollaborativeUpdateRequest,
+    CollaborativeUpdateResponse,
     ErrorResponse,
 )
 from app.services import collaborative_service
@@ -45,22 +47,12 @@ async def create_session(
             detail="Гости не могут создавать совместные сессии"
         )
     
-    # Check for existing active session
+    # Close any existing active session before creating new one
     existing = collaborative_service.get_user_active_session(db, current_user.id)
     if existing:
-        # Return existing session instead of error
-        return CollaborativeSessionResponse(
-            id=existing.id,
-            image_url=existing.image_url,
-            analysis_data=existing.analysis_data,
-            created_at=existing.created_at,
-            expires_at=existing.expires_at,
-            remaining_seconds=existing.remaining_seconds,
-            active_viewers=collaborative_service.get_viewer_count(existing.id),
-            is_active=existing.is_active
-        )
+        collaborative_service.close_session(db, existing.id, current_user.id)
     
-    # Create new session
+    # Create new session with current analysis data
     session = collaborative_service.create_session(
         db=db,
         owner_id=current_user.id,
@@ -107,6 +99,10 @@ async def get_session(
     top_style = styles[0].get("name", "unknown").replace("_", " ").title() if styles else None
     top_genre = genres[0].get("name", "unknown").replace("_", " ").title() if genres else None
     
+    # Check if deep analysis was performed
+    deep_analysis = session.analysis_data.get("deep_analysis_result", {})
+    has_deep_analysis = bool(deep_analysis and deep_analysis.get("text"))
+    
     return CollaborativeSessionPublic(
         id=session.id,
         image_url=session.image_url,
@@ -114,7 +110,8 @@ async def get_session(
         top_style=top_style,
         top_genre=top_genre,
         remaining_seconds=session.remaining_seconds,
-        is_active=session.is_active
+        is_active=session.is_active,
+        has_deep_analysis=has_deep_analysis
     )
 
 
@@ -249,10 +246,17 @@ async def heartbeat(
     # Update session in DB periodically
     collaborative_service.update_session_viewer_count(db, session_id)
     
+    # Check if deep analysis is available
+    has_deep_analysis = bool(
+        session.analysis_data and 
+        session.analysis_data.get('deep_analysis_result')
+    )
+    
     return CollaborativeHeartbeatResponse(
         success=True,
         active_viewers=active_count,
-        remaining_seconds=session.remaining_seconds
+        remaining_seconds=session.remaining_seconds,
+        has_deep_analysis=has_deep_analysis
     )
 
 
@@ -300,3 +304,28 @@ async def close_session(
         )
     
     return CollaborativeCloseResponse(success=True, message="Сессия закрыта")
+
+
+@router.patch("/{session_id}", response_model=CollaborativeUpdateResponse)
+async def update_session(
+    session_id: str,
+    request: CollaborativeUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update session analysis data (e.g., after deep analysis)."""
+    success = collaborative_service.update_session_analysis(
+        db, session_id, current_user.id, request.analysis_data
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена или вы не являетесь владельцем"
+        )
+    
+    # Check if deep analysis is included
+    deep_analysis = request.analysis_data.get("deep_analysis_result", {})
+    has_deep_analysis = bool(deep_analysis and deep_analysis.get("text"))
+    
+    return CollaborativeUpdateResponse(success=True, has_deep_analysis=has_deep_analysis)

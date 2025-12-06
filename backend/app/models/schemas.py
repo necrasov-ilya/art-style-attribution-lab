@@ -347,6 +347,7 @@ class CollaborativeSessionPublic(BaseModel):
     top_genre: Optional[str] = None
     remaining_seconds: int
     is_active: bool
+    has_deep_analysis: bool = False
 
 
 class CollaborativeQuestionRequest(BaseModel):
@@ -367,10 +368,22 @@ class CollaborativeHeartbeatResponse(BaseModel):
     success: bool = True
     active_viewers: int
     remaining_seconds: int
+    has_deep_analysis: bool = False
 
 
 class CollaborativeCloseResponse(BaseModel):
     """Response when closing a session."""
     success: bool = True
     message: str = "Сессия закрыта"
+
+
+class CollaborativeUpdateRequest(BaseModel):
+    """Request to update session analysis data."""
+    analysis_data: Dict[str, Any]
+
+
+class CollaborativeUpdateResponse(BaseModel):
+    """Response when updating session data."""
+    success: bool = True
+    has_deep_analysis: bool = False
 

@@ -155,6 +155,15 @@ export const collaborativeAPI = {
    * @param {string} sessionId - Session UUID
    */
   close: (sessionId) => api.delete(`/collaborative/${sessionId}`),
+  
+  /**
+   * Update session analysis data (owner only)
+   * Used to sync deep analysis results to active session
+   * @param {string} sessionId - Session UUID
+   * @param {object} analysisData - Updated analysis data
+   */
+  updateAnalysis: (sessionId, analysisData) => 
+    api.patch(`/collaborative/${sessionId}/analysis`, { analysis_data: analysisData }),
 }
 
 export default api

@@ -76,6 +76,22 @@ def close_session(db: Session, session_id: str, owner_id: int) -> bool:
     return False
 
 
+def update_session_analysis(db: Session, session_id: str, owner_id: int, analysis_data: dict) -> bool:
+    """Update the analysis data for a session (e.g., after deep analysis)."""
+    session = db.query(CollaborativeSession).filter(
+        CollaborativeSession.id == session_id,
+        CollaborativeSession.owner_id == owner_id,
+        CollaborativeSession.is_active == True
+    ).first()
+    
+    if session:
+        session.analysis_data = analysis_data
+        db.commit()
+        logger.info(f"Updated analysis data for session {session_id}")
+        return True
+    return False
+
+
 def get_user_active_session(db: Session, owner_id: int) -> Optional[CollaborativeSession]:
     """Get user's currently active session (if any)."""
     return db.query(CollaborativeSession).filter(
@@ -224,7 +240,6 @@ async def _stream_openrouter(user_prompt: str) -> AsyncGenerator[str, None]:
             }
         ) as response:
             response.raise_for_status()
-            buffer = ""
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     data = line[6:]
@@ -236,14 +251,8 @@ async def _stream_openrouter(user_prompt: str) -> AsyncGenerator[str, None]:
                         delta = parsed.get("choices", [{}])[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
-                            # Filter out think tags in real-time
-                            buffer += content
-                            # Only yield if we're not in a think block
-                            if "<think" not in buffer.lower() or "</think>" in buffer.lower():
-                                cleaned = clean_think_tags(buffer)
-                                if cleaned:
-                                    yield cleaned
-                                    buffer = ""
+                            # Yield content directly - preserve spaces
+                            yield content
                     except:
                         pass
 
@@ -314,19 +323,13 @@ async def _stream_ollama(user_prompt: str) -> AsyncGenerator[str, None]:
             }
         ) as response:
             response.raise_for_status()
-            buffer = ""
             async for line in response.aiter_lines():
                 try:
                     import json
                     parsed = json.loads(line)
                     content = parsed.get("message", {}).get("content", "")
                     if content:
-                        buffer += content
-                        # Filter think tags
-                        if "<think" not in buffer.lower() or "</think>" in buffer.lower():
-                            cleaned = clean_think_tags(buffer)
-                            if cleaned:
-                                yield cleaned
-                                buffer = ""
+                        # Yield content directly - preserve spaces
+                        yield content
                 except:
                     pass
