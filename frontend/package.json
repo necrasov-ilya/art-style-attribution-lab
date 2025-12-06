@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
@@ -12,7 +12,9 @@
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "axios": "^1.6.2",
+    "framer-motion": "^12.23.25",
     "lucide-react": "^0.554.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",

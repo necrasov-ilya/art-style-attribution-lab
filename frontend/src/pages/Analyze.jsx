@@ -1,15 +1,17 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { analysisAPI, historyAPI, deepAnalysisAPI } from '../api'
+import { analysisAPI, historyAPI, deepAnalysisAPI, collaborativeAPI } from '../api'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
+import { QRCodeSVG } from 'qrcode.react'
 import { 
   Upload, X, Search, Zap, LogOut, LogIn, Palette, Brush, BookOpen, 
   Sparkles, Loader2, Download, History, ChevronLeft, ChevronRight, 
   Maximize2, PanelRightClose, PanelRightOpen, Image as ImageIcon,
-  Share2, Info, Layers, Eye, Menu, Clock, Sun, Compass, Heart, User
+  Share2, Info, Layers, Eye, Menu, Clock, Sun, Compass, Heart, User,
+  Users, Copy, Check, Link2
 } from 'lucide-react'
 
 // Icon mapping for inline markers
@@ -290,6 +292,16 @@ function Analyze() {
   // Current history item id (for saving deep analysis)
   const [currentHistoryItemId, setCurrentHistoryItemId] = useState(null)
 
+  // Collaborative Session State
+  const [collabSession, setCollabSession] = useState(null)
+  const [collabLoading, setCollabLoading] = useState(false)
+  const [collabError, setCollabError] = useState('')
+  const [collabRemainingTime, setCollabRemainingTime] = useState(0)
+  const [collabViewers, setCollabViewers] = useState(0)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const collabTimerRef = useRef(null)
+  const collabPollRef = useRef(null)
+
   // Deep Analysis Steps for progress indicator
   const DEEP_ANALYSIS_STEPS = [
     { key: 'features', label: 'Извлечение признаков', icon: Eye },
@@ -356,7 +368,106 @@ function Analyze() {
     setDeepAnalysisStep(0)
     setDeepAnalysisResults(null)
     setDeepAnalysisError('')
+    // Reset collaborative session
+    resetCollabSession()
   }
+
+  // === Collaborative Session Functions ===
+  
+  const resetCollabSession = useCallback(() => {
+    if (collabTimerRef.current) clearInterval(collabTimerRef.current)
+    if (collabPollRef.current) clearInterval(collabPollRef.current)
+    setCollabSession(null)
+    setCollabRemainingTime(0)
+    setCollabViewers(0)
+    setCollabError('')
+    setLinkCopied(false)
+  }, [])
+
+  const handleCreateCollabSession = async () => {
+    if (!result || isGuest) return
+    
+    setCollabLoading(true)
+    setCollabError('')
+    
+    try {
+      const response = await collaborativeAPI.create({
+        analysis_data: result,
+        image_url: result.image_path
+      })
+      
+      setCollabSession(response.data)
+      setCollabRemainingTime(response.data.remaining_seconds)
+      setCollabViewers(response.data.active_viewers)
+      
+      // Start countdown timer
+      collabTimerRef.current = setInterval(() => {
+        setCollabRemainingTime(prev => {
+          if (prev <= 1) {
+            resetCollabSession()
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      
+      // Poll for viewer count every 10 seconds
+      collabPollRef.current = setInterval(async () => {
+        try {
+          const viewersRes = await collaborativeAPI.getViewers(response.data.id)
+          setCollabViewers(viewersRes.data.active_viewers)
+          setCollabRemainingTime(viewersRes.data.remaining_seconds)
+        } catch (e) {
+          console.warn('Failed to fetch viewers:', e)
+        }
+      }, 10000)
+      
+    } catch (err) {
+      console.error('Failed to create collab session:', err)
+      setCollabError(err.response?.data?.detail || 'Не удалось создать сессию')
+    } finally {
+      setCollabLoading(false)
+    }
+  }
+
+  const handleCloseCollabSession = async () => {
+    if (!collabSession) return
+    
+    try {
+      await collaborativeAPI.close(collabSession.id)
+    } catch (err) {
+      console.warn('Failed to close session:', err)
+    }
+    
+    resetCollabSession()
+  }
+
+  const handleCopyCollabLink = async () => {
+    if (!collabSession) return
+    
+    const link = `${window.location.origin}/collab/${collabSession.id}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const formatCollabTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (collabTimerRef.current) clearInterval(collabTimerRef.current)
+      if (collabPollRef.current) clearInterval(collabPollRef.current)
+    }
+  }, [])
 
   const handleAnalyze = async () => {
     if (!file) return
@@ -781,7 +892,8 @@ function Analyze() {
                 </ReactMarkdown>
               </div>
 
-              {/* Deep Analysis Section */}
+              {/* Deep Analysis Section - Hidden for guests */}
+              {!isGuest && (
               <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Sparkles size={120} />
@@ -935,8 +1047,10 @@ function Analyze() {
                   )}
                 </div>
               </div>
+              )}
 
-              {/* Generation Studio - Redesigned to match Deep Analysis */}
+              {/* Generation Studio - Hidden for guests */}
+              {!isGuest && (
               <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Brush size={120} />
@@ -1007,6 +1121,120 @@ function Analyze() {
                   )}
                 </div>
               </div>
+              )}
+
+              {/* Share Analysis Section - Hidden for guests */}
+              {!isGuest && (
+              <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <Share2 size={120} />
+                </div>
+                
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="font-serif text-3xl text-white">Поделиться анализом</h3>
+                    <span className="text-xs text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full bg-emerald-500/10 font-bold tracking-wider">
+                      {collabSession ? 'АКТИВНО' : 'СОВМЕСТНЫЙ ДОСТУП'}
+                    </span>
+                  </div>
+                  
+                  {/* Before session created */}
+                  {!collabSession && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
+                        Создайте ссылку для совместного обсуждения этого анализа. 
+                        Гости смогут задавать вопросы об атрибуции и получать ответы от AI.
+                      </p>
+                      
+                      {collabError && (
+                        <div className="mb-6 p-4 bg-red-900/30 border border-red-500/30 rounded-lg text-red-300 text-sm max-w-md mx-auto">
+                          {collabError}
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={handleCreateCollabSession}
+                        disabled={collabLoading}
+                        className="px-12 py-6 bg-gradient-to-r from-emerald-600 to-emerald-400 text-white font-bold text-lg tracking-wide hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all relative overflow-hidden group rounded-xl disabled:opacity-50"
+                      >
+                        <span className="relative z-10 flex items-center justify-center gap-3">
+                          {collabLoading ? (
+                            <Loader2 size={20} className="animate-spin" />
+                          ) : (
+                            <Link2 size={20} />
+                          )}
+                          {collabLoading ? 'Создание...' : 'Создать ссылку'}
+                        </span>
+                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* After session created - show QR and link */}
+                  {collabSession && (
+                    <div>
+                      {/* Status badges */}
+                      <div className="flex flex-wrap items-center gap-4 mb-8">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-400">
+                          <Users size={16} />
+                          <span className="font-medium">{collabViewers} активных</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 border border-amber-500/30 rounded-full text-amber-400">
+                          <Clock size={16} />
+                          <span className="font-mono font-medium">{formatCollabTime(collabRemainingTime)}</span>
+                        </div>
+                      </div>
+                      
+                      {/* QR Code and Link */}
+                      <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
+                        <div className="p-4 bg-white rounded-2xl">
+                          <QRCodeSVG 
+                            value={`${window.location.origin}/collab/${collabSession.id}`}
+                            size={180}
+                            level="M"
+                            includeMargin={false}
+                          />
+                        </div>
+                        
+                        <div className="flex-1 w-full md:w-auto">
+                          <p className="text-gray-400 text-sm mb-3">Ссылка для участников:</p>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-gray-300 font-mono text-sm truncate">
+                              {`${window.location.origin}/collab/${collabSession.id}`}
+                            </div>
+                            <button
+                              onClick={handleCopyCollabLink}
+                              className="p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
+                              title="Копировать ссылку"
+                            >
+                              {linkCopied ? (
+                                <Check size={20} className="text-emerald-400" />
+                              ) : (
+                                <Copy size={20} className="text-gray-400" />
+                              )}
+                            </button>
+                          </div>
+                          {linkCopied && (
+                            <p className="text-emerald-400 text-sm mt-2">Ссылка скопирована!</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Close button */}
+                      <div className="text-center">
+                        <button
+                          onClick={handleCloseCollabSession}
+                          className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 rounded-xl transition-colors flex items-center gap-2 mx-auto"
+                        >
+                          <X size={18} />
+                          Закрыть доступ
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              )}
 
             </div>
             

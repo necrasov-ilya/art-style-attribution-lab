@@ -97,4 +97,64 @@ export const deepAnalysisAPI = {
     api.get('/deep-analysis/features/composition', { params: { image_path: imagePath } }),
 }
 
+// Collaborative Session API
+export const collaborativeAPI = {
+  /**
+   * Create a new collaborative session
+   * @param {object} data - { analysis_data, image_url }
+   */
+  create: (data) => api.post('/collaborative', data),
+  
+  /**
+   * Get public session info (for guests)
+   * @param {string} sessionId - Session UUID
+   */
+  getSession: (sessionId) => api.get(`/collaborative/${sessionId}`),
+  
+  /**
+   * Get full session info (for owner)
+   * @param {string} sessionId - Session UUID
+   */
+  getSessionFull: (sessionId) => api.get(`/collaborative/${sessionId}/full`),
+  
+  /**
+   * Ask a question (non-streaming)
+   * @param {string} sessionId - Session UUID
+   * @param {string} question - The question to ask
+   */
+  askQuestion: (sessionId, question) => 
+    api.post(`/collaborative/${sessionId}/ask`, { question }),
+  
+  /**
+   * Ask a question with streaming response
+   * Returns the URL for SSE connection
+   * @param {string} sessionId - Session UUID
+   * @param {string} question - The question to ask
+   */
+  askQuestionStreamUrl: (sessionId) => 
+    `${API_BASE_URL}/collaborative/${sessionId}/ask/stream`,
+  
+  /**
+   * Send heartbeat to register presence
+   * @param {string} sessionId - Session UUID
+   * @param {string} viewerId - Unique viewer ID (optional)
+   */
+  heartbeat: (sessionId, viewerId = null) => {
+    const params = viewerId ? `?viewer_id=${viewerId}` : ''
+    return api.post(`/collaborative/${sessionId}/heartbeat${params}`)
+  },
+  
+  /**
+   * Get viewer count (for owner)
+   * @param {string} sessionId - Session UUID
+   */
+  getViewers: (sessionId) => api.get(`/collaborative/${sessionId}/viewers`),
+  
+  /**
+   * Close a session (owner only)
+   * @param {string} sessionId - Session UUID
+   */
+  close: (sessionId) => api.delete(`/collaborative/${sessionId}`),
+}
+
 export default api

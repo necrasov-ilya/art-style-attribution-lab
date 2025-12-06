@@ -2,16 +2,19 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, Set
+from typing import Dict, Set, Tuple
 from fastapi import HTTPException, Request, status
 
 
 class ConcurrentOperationLimiter:
     """Prevents users from running multiple heavy operations simultaneously."""
+    
+    # Maximum time (seconds) an operation can be "active" before being considered stale
+    STALE_OPERATION_TIMEOUT = 300  # 5 minutes
 
     def __init__(self):
-        # Track active operations per user: {user_id: {operation_type}}
-        self._active_operations: Dict[int, Set[str]] = defaultdict(set)
+        # Track active operations per user: {user_id: {operation_type: start_time}}
+        self._active_operations: Dict[int, Dict[str, datetime]] = defaultdict(dict)
         self._lock = asyncio.Lock()
 
     async def acquire(self, user_id: int, operation_type: str) -> None:
@@ -22,6 +25,11 @@ class ConcurrentOperationLimiter:
         or incompatible operations.
         """
         async with self._lock:
+            now = datetime.now()
+            
+            # Clean up stale operations for this user first
+            self._cleanup_stale_operations(user_id, now)
+            
             active = self._active_operations[user_id]
 
             # Define mutually exclusive operation groups
@@ -29,21 +37,42 @@ class ConcurrentOperationLimiter:
 
             if operation_type in heavy_ops:
                 # Check if any heavy operation is already running
-                if active & heavy_ops:
+                active_heavy = set(active.keys()) & heavy_ops
+                if active_heavy:
                     raise HTTPException(
                         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                         detail="Another analysis or generation is already in progress. Please wait for it to complete."
                     )
 
-            # Add to active operations
-            self._active_operations[user_id].add(operation_type)
+            # Add to active operations with timestamp
+            self._active_operations[user_id][operation_type] = now
+    
+    def _cleanup_stale_operations(self, user_id: int, now: datetime) -> None:
+        """Remove operations that have been running too long (likely stuck)."""
+        if user_id not in self._active_operations:
+            return
+        
+        stale_ops = []
+        for op_type, start_time in self._active_operations[user_id].items():
+            if (now - start_time).total_seconds() > self.STALE_OPERATION_TIMEOUT:
+                stale_ops.append(op_type)
+        
+        for op_type in stale_ops:
+            del self._active_operations[user_id][op_type]
 
     async def release(self, user_id: int, operation_type: str) -> None:
         """Release an operation lock."""
         async with self._lock:
-            self._active_operations[user_id].discard(operation_type)
-            # Clean up empty sets
-            if not self._active_operations[user_id]:
+            if user_id in self._active_operations:
+                self._active_operations[user_id].pop(operation_type, None)
+                # Clean up empty dicts
+                if not self._active_operations[user_id]:
+                    del self._active_operations[user_id]
+    
+    async def force_release_all(self, user_id: int) -> None:
+        """Force release all operations for a user (emergency cleanup)."""
+        async with self._lock:
+            if user_id in self._active_operations:
                 del self._active_operations[user_id]
 
 

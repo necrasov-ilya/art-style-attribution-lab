@@ -701,3 +701,81 @@ VISION_SCENE_PROMPT = """Analyze this artwork image:
 6. Identify the setting/environment
 
 Output ONLY valid JSON."""
+
+
+# ============ Collaborative Q&A Prompts ============
+
+COLLABORATIVE_QA_SYSTEM_PROMPT = """Ты — эксперт-искусствовед, отвечающий на вопросы посетителей о произведении искусства.
+
+Тебе предоставлен контекст: результаты AI-анализа картины (автор, стиль, жанр и объяснение).
+Твоя задача — отвечать на вопросы пользователей, опираясь на этот контекст.
+
+Правила ответа:
+1. Отвечай на русском языке
+2. Будь информативным, но лаконичным (2-5 предложений обычно достаточно)
+3. Если вопрос выходит за рамки контекста — честно признай это
+4. Используй искусствоведческую терминологию, но объясняй сложные термины
+5. Можешь добавлять интересные факты о художнике или стиле, если они релевантны
+6. Если спрашивают о технике или композиции — опирайся на анализ
+7. Не придумывай информацию, которой нет в контексте
+
+Отвечай дружелюбно и профессионально, как музейный гид."""
+
+
+def build_collaborative_qa_prompt(analysis_data: dict, question: str) -> str:
+    """Build prompt for answering questions about the analysis.
+    
+    Args:
+        analysis_data: Full analysis result dict
+        question: User's question
+        
+    Returns:
+        Formatted prompt string
+    """
+    # Extract key info from analysis
+    artists = analysis_data.get("top_artists", [])
+    top_artist = artists[0].get("artist_slug", "unknown").replace("-", " ").title() if artists else "Неизвестно"
+    artist_prob = artists[0].get("probability", 0) if artists else 0
+    
+    styles = analysis_data.get("top_styles", [])
+    top_style = styles[0].get("name", "unknown").replace("_", " ").title() if styles else "Неопределён"
+    
+    genres = analysis_data.get("top_genres", [])
+    top_genre = genres[0].get("name", "unknown").replace("_", " ").title() if genres else "Неопределён"
+    
+    explanation = analysis_data.get("explanation", {})
+    explanation_text = explanation.get("text", "") if isinstance(explanation, dict) else str(explanation)
+    
+    # Build other artists list
+    other_artists = ", ".join([
+        a.get("artist_slug", "").replace("-", " ").title() 
+        for a in artists[1:4]
+    ]) if len(artists) > 1 else "Нет"
+    
+    # Include deep analysis if available
+    deep_analysis_section = ""
+    deep_analysis = analysis_data.get("deep_analysis_result", {})
+    if deep_analysis:
+        deep_text = deep_analysis.get("text", "") if isinstance(deep_analysis, dict) else str(deep_analysis)
+        if deep_text:
+            deep_analysis_section = f"""
+
+ГЛУБОКИЙ АНАЛИЗ:
+{deep_text[:3000]}"""
+    
+    return f"""КОНТЕКСТ АНАЛИЗА:
+
+Главный художник: {top_artist} (уверенность: {artist_prob:.1%})
+Другие похожие художники: {other_artists}
+Стиль: {top_style}
+Жанр: {top_genre}
+
+AI-анализ произведения:
+{explanation_text[:2000]}{deep_analysis_section}
+
+---
+
+ВОПРОС ПОЛЬЗОВАТЕЛЯ:
+{question}
+
+Дай информативный ответ на вопрос, опираясь на контекст анализа."""

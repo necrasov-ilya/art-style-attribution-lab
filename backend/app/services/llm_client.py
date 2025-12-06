@@ -87,7 +87,8 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int = 512,
         temperature: float = 0.7
     ) -> str:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        timeout = httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
@@ -110,6 +111,9 @@ class OpenAIProvider(LLMProvider):
                 content = data["choices"][0]["message"]["content"]
                 return clean_think_tags(content)
                 
+            except httpx.TimeoutException:
+                logger.error(f"OpenAI request timed out after {settings.LLM_TIMEOUT}s")
+                raise LLMError(f"OpenAI request timed out. Try again or increase LLM_TIMEOUT.")
             except httpx.HTTPStatusError as e:
                 logger.error(f"OpenAI API error: {e.response.status_code} - {e.response.text}")
                 raise LLMError(f"OpenAI API error: {e.response.status_code}")
@@ -136,7 +140,8 @@ class OpenRouterProvider(LLMProvider):
         max_tokens: int = 512,
         temperature: float = 0.7
     ) -> str:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        timeout = httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
@@ -161,6 +166,9 @@ class OpenRouterProvider(LLMProvider):
                 content = data["choices"][0]["message"]["content"]
                 return clean_think_tags(content)
                 
+            except httpx.TimeoutException:
+                logger.error(f"OpenRouter request timed out after {settings.LLM_TIMEOUT}s")
+                raise LLMError(f"OpenRouter request timed out. Try again or increase LLM_TIMEOUT.")
             except httpx.HTTPStatusError as e:
                 logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
                 raise LLMError(f"OpenRouter API error: {e.response.status_code}")
@@ -183,7 +191,9 @@ class OllamaProvider(LLMProvider):
         max_tokens: int = 512,
         temperature: float = 0.7
     ) -> str:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        # Ollama uses slightly longer timeout as local inference can be slower
+        timeout = httpx.Timeout(max(settings.LLM_TIMEOUT, 180), connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/api/chat",
@@ -208,6 +218,9 @@ class OllamaProvider(LLMProvider):
             except httpx.ConnectError:
                 logger.error(f"Cannot connect to Ollama at {self.base_url}")
                 raise LLMError(f"Cannot connect to Ollama. Is it running at {self.base_url}?")
+            except httpx.TimeoutException:
+                logger.error(f"Ollama request timed out after {settings.LLM_TIMEOUT}s")
+                raise LLMError(f"Ollama request timed out. Try again or increase LLM_TIMEOUT.")
             except httpx.HTTPStatusError as e:
                 logger.error(f"Ollama API error: {e.response.status_code} - {e.response.text}")
                 raise LLMError(f"Ollama API error: {e.response.status_code}")
@@ -351,7 +364,8 @@ async def _vision_openrouter(
     image_b64 = encode_image_to_base64(image_path)
     media_type = get_image_media_type(image_path)
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    timeout = httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             response = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -390,6 +404,9 @@ async def _vision_openrouter(
             content = data["choices"][0]["message"]["content"]
             return clean_think_tags(content)
             
+        except httpx.TimeoutException:
+            logger.error(f"OpenRouter Vision request timed out after {settings.LLM_TIMEOUT}s")
+            raise LLMError(f"OpenRouter Vision request timed out. Try again or increase LLM_TIMEOUT.")
         except httpx.HTTPStatusError as e:
             logger.error(f"OpenRouter Vision API error: {e.response.status_code} - {e.response.text}")
             raise LLMError(f"OpenRouter Vision API error: {e.response.status_code}")
@@ -412,7 +429,8 @@ async def _vision_openai(
     image_b64 = encode_image_to_base64(image_path)
     media_type = get_image_media_type(image_path)
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    timeout = httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -449,6 +467,9 @@ async def _vision_openai(
             content = data["choices"][0]["message"]["content"]
             return clean_think_tags(content)
             
+        except httpx.TimeoutException:
+            logger.error(f"OpenAI Vision request timed out after {settings.LLM_TIMEOUT}s")
+            raise LLMError(f"OpenAI Vision request timed out. Try again or increase LLM_TIMEOUT.")
         except httpx.HTTPStatusError as e:
             logger.error(f"OpenAI Vision API error: {e.response.status_code} - {e.response.text}")
             raise LLMError(f"OpenAI Vision API error: {e.response.status_code}")

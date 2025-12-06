@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 
 # Import all models to ensure they're registered with Base
-from app.models import User, AnalysisHistory
+from app.models import User, AnalysisHistory, CollaborativeSession
 
 
 @asynccontextmanager

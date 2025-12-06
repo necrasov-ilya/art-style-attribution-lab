@@ -314,3 +314,63 @@ class DeepAnalysisFullResponse(BaseModel):
     summary: Optional[RichSummary] = None  # Changed from str to RichSummary
     message: Optional[str] = None
 
+
+# ============ Collaborative Session Schemas ============
+
+class CollaborativeSessionCreate(BaseModel):
+    """Request to create a collaborative session."""
+    analysis_data: Dict[str, Any]  # Full analysis result
+    image_url: str
+
+
+class CollaborativeSessionResponse(BaseModel):
+    """Response with session details."""
+    id: str
+    image_url: str
+    analysis_data: Dict[str, Any]
+    created_at: datetime
+    expires_at: datetime
+    remaining_seconds: int
+    active_viewers: int
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
+
+
+class CollaborativeSessionPublic(BaseModel):
+    """Public session info for guests (without sensitive data)."""
+    id: str
+    image_url: str
+    top_artist: str
+    top_style: Optional[str] = None
+    top_genre: Optional[str] = None
+    remaining_seconds: int
+    is_active: bool
+
+
+class CollaborativeQuestionRequest(BaseModel):
+    """Request to ask a question about the analysis."""
+    question: str = Field(..., min_length=2, max_length=1000)
+
+
+class CollaborativeQuestionResponse(BaseModel):
+    """Response with AI answer to the question."""
+    success: bool = True
+    question: str
+    answer: str
+    message: Optional[str] = None
+
+
+class CollaborativeHeartbeatResponse(BaseModel):
+    """Response for heartbeat/presence update."""
+    success: bool = True
+    active_viewers: int
+    remaining_seconds: int
+
+
+class CollaborativeCloseResponse(BaseModel):
+    """Response when closing a session."""
+    success: bool = True
+    message: str = "Сессия закрыта"
+

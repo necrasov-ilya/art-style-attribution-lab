@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Analyze from './pages/Analyze'
+import CollaborativeView from './pages/CollaborativeView'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
 function PrivateRoute({ children }) {
@@ -41,6 +42,11 @@ function AppRoutes() {
             <Analyze />
           </PrivateRoute>
         }
+      />
+      {/* Public collaborative session route - no auth required */}
+      <Route
+        path="/collab/:sessionId"
+        element={<CollaborativeView />}
       />
     </Routes>
   )
