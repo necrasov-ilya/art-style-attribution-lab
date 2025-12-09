@@ -11,8 +11,55 @@ import {
   Sparkles, Loader2, Download, History, ChevronLeft, ChevronRight, 
   Maximize2, PanelRightClose, PanelRightOpen, Image as ImageIcon,
   Share2, Info, Layers, Eye, Menu, Clock, Sun, Compass, Heart, User,
-  Users, Copy, Check, Link2
+  Users, Copy, Check, Link2, Brain
 } from 'lucide-react'
+
+// Clean think tags from LLM response
+const cleanThinkTags = (text) => {
+  if (!text) return ''
+  // Remove <think>...</think> blocks
+  let cleaned = text.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+  // Remove <thinking>...</thinking> blocks
+  cleaned = cleaned.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+  // Remove unclosed <think> tags (streaming)
+  cleaned = cleaned.replace(/<think[^>]*>[\s\S]*$/gi, '')
+  cleaned = cleaned.replace(/<thinking[^>]*>[\s\S]*$/gi, '')
+  // Clean up extra newlines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+  return cleaned.trim()
+}
+
+// Check if text contains unclosed think tags (for "thinking" indicator)
+const hasThinkingInProgress = (text) => {
+  if (!text) return false
+  // Has opening tag but no closing tag = still thinking
+  const hasOpenThink = /<think[^>]*>/i.test(text)
+  const hasCloseThink = /<\/think>/i.test(text)
+  const hasOpenThinking = /<thinking[^>]*>/i.test(text)
+  const hasCloseThinking = /<\/thinking>/i.test(text)
+  return (hasOpenThink && !hasCloseThink) || (hasOpenThinking && !hasCloseThinking)
+}
+
+// Reusable blocked overlay component - minimal pulsing dot animation
+const BlockedOverlay = ({ show, accentColor = 'gold' }) => {
+  if (!show) return null
+  
+  const dotColors = {
+    gold: 'bg-gold-400',
+    purple: 'bg-purple-400',
+    emerald: 'bg-emerald-400',
+  }
+  
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px] bg-black/20 rounded-2xl">
+      <div className="flex gap-1.5">
+        <div className={`w-2 h-2 rounded-full ${dotColors[accentColor]} animate-pulse`} style={{ animationDelay: '0ms' }} />
+        <div className={`w-2 h-2 rounded-full ${dotColors[accentColor]} animate-pulse`} style={{ animationDelay: '150ms' }} />
+        <div className={`w-2 h-2 rounded-full ${dotColors[accentColor]} animate-pulse`} style={{ animationDelay: '300ms' }} />
+      </div>
+    </div>
+  )
+}
 
 // Icon mapping for inline markers
 const MARKER_ICONS = {
@@ -272,6 +319,11 @@ function Analyze() {
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef(null)
   
+  // Analysis phase: 'idle' | 'analyzing' | 'vision' | 'streaming' | 'done'
+  const [analysisPhase, setAnalysisPhase] = useState('idle')
+  const [streamingText, setStreamingText] = useState('')
+  const [visionResult, setVisionResult] = useState(null)
+  
   // UI State
   const [history, setHistory] = useState([])
   const [showHistory, setShowHistory] = useState(false)
@@ -319,6 +371,28 @@ function Analyze() {
   const imageOpacity = useTransform(scrollYProgress, [0, 0.6], [1, 0])
   const imageY = useTransform(scrollYProgress, [0, 1], [0, 150])
 
+  // Ref to track streaming text for callback access
+  const streamingTextRef = useRef('')
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    streamingTextRef.current = streamingText
+  }, [streamingText])
+  
+  // When analysis phase becomes 'done', apply cleaned text to result
+  useEffect(() => {
+    if (analysisPhase === 'done' && streamingText) {
+      const cleanedText = cleanThinkTags(streamingText)
+      setResult(prev => prev ? {
+        ...prev,
+        explanation: { 
+          text: cleanedText, 
+          source: prev.explanation?.source || 'llm' 
+        },
+      } : prev)
+    }
+  }, [analysisPhase, streamingText])
+
   // Load history
   useEffect(() => {
     if (!isGuest) {
@@ -363,6 +437,10 @@ function Analyze() {
     setResult(null)
     setGeneratedImages(null)
     setCurrentHistoryItemId(null)
+    // Reset analysis streaming state
+    setAnalysisPhase('idle')
+    setStreamingText('')
+    setVisionResult(null)
     // Reset deep analysis state
     setDeepAnalysisActive(false)
     setDeepAnalysisStep(0)
@@ -500,23 +578,136 @@ function Analyze() {
   }, [])
 
   const handleAnalyze = async () => {
-    if (!file) return
+    if (!file || loading) return
+    
     setLoading(true)
+    setError('')
+    setAnalysisPhase('analyzing')
+    setStreamingText('')
+    setVisionResult(null)
+    setResult(null)
+    
     try {
-      const response = await analysisAPI.analyze(file)
-      setResult(response.data)
-      if (!isGuest) loadHistory()
+      let predictionsData = null // Store for vision callback
       
-      // Smooth scroll to results after a short delay
-      setTimeout(() => {
-        window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
-      }, 100)
+      await analysisAPI.analyzeStream(file, {
+        onPredictions: (data) => {
+          // ML predictions received
+          predictionsData = data // Store for later use
+          const needsVision = data.needs_vision
+          
+          if (needsVision) {
+            // Unknown Artist - wait for vision, don't show results yet
+            setAnalysisPhase('vision')
+          } else {
+            // Known Artist - show predictions immediately, start streaming
+            setResult({
+              success: true,
+              image_path: data.image_path,
+              top_artists: data.top_artists,
+              top_genres: data.top_genres,
+              top_styles: data.top_styles,
+              explanation: { text: '', source: 'streaming' },
+            })
+            setAnalysisPhase('streaming')
+            setLoading(false) // Stop image blur
+            
+            // Scroll to results
+            setTimeout(() => {
+              window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
+            }, 100)
+          }
+        },
+        
+        onVision: (data) => {
+          // Vision analysis complete - now show results
+          setVisionResult(data)
+          
+          // Determine artist name to display
+          let artistSlug = 'unknown-artist'
+          let artistDisplay = data.artist_name_ru || data.artist_name || 'Неизвестный художник'
+          if (data.artist_name && data.confidence !== 'none') {
+            artistSlug = data.artist_name.toLowerCase().replace(/\s+/g, '-')
+          }
+          
+          // Build result with vision data
+          const topArtists = data.artist_name && data.confidence !== 'none'
+            ? [{ artist_slug: artistSlug, probability: 0, index: -1 }, ...(predictionsData?.top_artists?.slice(1) || [])]
+            : predictionsData?.top_artists || []
+          
+          setResult({
+            success: true,
+            image_path: predictionsData?.image_path,
+            top_artists: topArtists,
+            top_genres: predictionsData?.top_genres || [],
+            top_styles: predictionsData?.top_styles || [],
+            explanation: { text: '', source: 'streaming' },
+            vision_result: data,
+          })
+          
+          setAnalysisPhase('streaming')
+          setLoading(false) // Stop image blur
+          
+          // Scroll to results
+          setTimeout(() => {
+            window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
+          }, 100)
+        },
+        
+        onText: (chunk) => {
+          // Streaming text chunk
+          setStreamingText(prev => prev + chunk)
+        },
+        
+        onComplete: (data) => {
+          // Analysis complete - useEffect will handle applying cleaned text
+          setAnalysisPhase('done')
+          setLoading(false)
+          
+          if (data.history_id) {
+            setCurrentHistoryItemId(data.history_id)
+          }
+          
+          // Store the explanation source for useEffect to use
+          setResult(prev => prev ? {
+            ...prev,
+            explanation: { 
+              ...prev.explanation,
+              source: data.explanation_source || 'llm' 
+            },
+          } : prev)
+          
+          if (!isGuest) loadHistory()
+        },
+        
+        onError: (errorMsg) => {
+          setError(errorMsg || 'Ошибка анализа. Попробуйте снова.')
+          setAnalysisPhase('idle')
+          setLoading(false)
+        },
+      })
     } catch (err) {
       setError('Ошибка анализа. Попробуйте снова.')
-    } finally {
+      setAnalysisPhase('idle')
       setLoading(false)
     }
   }
+  
+  // Update result explanation when streaming text changes (only during streaming phase)
+  // During streaming, show raw text; final cleanup happens when phase becomes 'done'
+  useEffect(() => {
+    if (analysisPhase === 'streaming' && streamingText && result) {
+      // During streaming, show the cleaned text for display
+      const displayText = cleanThinkTags(streamingText)
+      setResult(prev => prev ? {
+        ...prev,
+        explanation: { 
+          text: displayText, 
+          source: prev.explanation?.source || 'streaming' 
+        },
+      } : prev)
+    }
+  }, [streamingText, analysisPhase])
 
   const handleDeepAnalysis = async () => {
     if (!result?.image_path) return
@@ -537,6 +728,7 @@ function Analyze() {
       clearInterval(stepInterval)
       setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
       setDeepAnalysisResults(response.data)
+      setDeepAnalysisActive(false)  // Analysis complete - unblock other sections
       
       // Save deep analysis to history for authenticated users
       if (!isGuest && currentHistoryItemId) {
@@ -810,7 +1002,9 @@ function Analyze() {
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="w-full h-full bg-black/20 backdrop-blur-[2px] animate-pulse" />
                       <div className="absolute text-gold-500 font-serif tracking-widest text-2xl uppercase animate-bounce drop-shadow-lg">
-                        Анализ...
+                        {analysisPhase === 'vision' ? 'Нужно больше времени...' : 
+                         analysisPhase === 'streaming' ? 'Генерация анализа...' : 
+                         'Анализ...'}
                       </div>
                     </div>
                   )}
@@ -822,7 +1016,8 @@ function Analyze() {
                     {!result && (
                       <button 
                         onClick={handleAnalyze}
-                        className="px-8 py-3 bg-white text-black font-serif font-medium tracking-wide hover:bg-gray-200 transition-colors shadow-lg whitespace-nowrap"
+                        disabled={loading || analysisPhase !== 'idle'}
+                        className="px-8 py-3 bg-white text-black font-serif font-medium tracking-wide hover:bg-gray-200 transition-colors shadow-lg whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Анализировать
                       </button>
@@ -873,8 +1068,12 @@ function Analyze() {
                   viewport={{ once: true }}
                   className="inline-block mb-6"
                 >
-                  <span className="px-4 py-1.5 border border-gold-500/30 rounded-full text-gold-500 text-xs font-bold tracking-[0.2em] uppercase bg-gold-500/5">
-                    Отчет об атрибуции
+                  <span className={`px-4 py-1.5 border rounded-full text-xs font-bold tracking-[0.2em] uppercase ${
+                    result.vision_result?.is_photo 
+                      ? 'border-blue-500/30 text-blue-400 bg-blue-500/5' 
+                      : 'border-gold-500/30 text-gold-500 bg-gold-500/5'
+                  }`}>
+                    {result.vision_result?.is_photo ? 'Фотография' : 'Отчет об атрибуции'}
                   </span>
                 </motion.div>
                 
@@ -885,7 +1084,9 @@ function Analyze() {
                   transition={{ delay: 0.1 }}
                   className="font-serif text-6xl md:text-7xl text-white mb-8 leading-tight"
                 >
-                  {formatName(result.top_artists[0].artist_slug)}
+                  {result.vision_result?.is_photo 
+                    ? (result.vision_result?.artist_name_ru || 'Фотография')
+                    : formatName(result.top_artists[0].artist_slug)}
                 </motion.h1>
                 
                 <motion.div 
@@ -923,6 +1124,26 @@ function Analyze() {
 
               {/* Article Content */}
               <div className="prose prose-invert prose-lg max-w-none font-serif leading-relaxed text-gray-300 mb-24">
+                {/* Thinking indicator during streaming - styled like CollaborativeView */}
+                {analysisPhase === 'streaming' && hasThinkingInProgress(streamingText) && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-4 mb-8 p-4 rounded-xl bg-[#827DBD]/10 border border-[#827DBD]/20"
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#827DBD]/30" style={{ backgroundColor: '#827DBD' }}>
+                      <Brain size={20} className="text-white animate-pulse" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium mb-1 uppercase tracking-wider text-[#827DBD]">
+                        OMNIA Engine думает...
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        Анализирую стилистические особенности произведения
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
                 <ReactMarkdown 
                   components={{
                     h2: ({node, ...props}) => <h2 className="text-3xl font-serif text-white mt-12 mb-6 border-b border-white/10 pb-4" {...props} />,
@@ -936,12 +1157,14 @@ function Analyze() {
                 </ReactMarkdown>
               </div>
 
-              {/* Deep Analysis Section - Hidden for guests */}
+              {/* Deep Analysis Section - Hidden for guests, blocked during streaming */}
               {!isGuest && (
-              <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
+              <div className={`mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden ${result.vision_result?.is_photo ? 'opacity-60' : ''}`}>
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Sparkles size={120} />
                 </div>
+                
+                <BlockedOverlay show={analysisPhase === 'streaming' && !result.vision_result?.is_photo} accentColor="gold" />
                 
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-8">
@@ -949,6 +1172,22 @@ function Analyze() {
                     <span className="text-xs text-gold-500 border border-gold-500/30 px-3 py-1 rounded-full bg-gold-500/10 font-bold tracking-wider">AI PRO SUITE</span>
                   </div>
                   
+                  {/* Unavailable for photos */}
+                  {result.vision_result?.is_photo ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gray-800 flex items-center justify-center">
+                        <ImageIcon size={32} className="text-gray-500" />
+                      </div>
+                      <p className="text-gray-400 mb-4 max-w-2xl mx-auto">
+                        Глубокий анализ недоступен для фотографий
+                      </p>
+                      <p className="text-gray-500 text-sm max-w-xl mx-auto">
+                        Этот инструмент предназначен для анализа произведений искусства — картин, рисунков и гравюр. 
+                        Для фотографий доступно только базовое описание.
+                      </p>
+                    </div>
+                  ) : (
+                  <>
                   {/* Launch Button - show when no analysis running */}
                   {!deepAnalysisActive && !deepAnalysisResults && (
                     <div className="text-center py-8">
@@ -1089,16 +1328,20 @@ function Analyze() {
                       )}
                     </motion.div>
                   )}
+                  </>
+                  )}
                 </div>
               </div>
               )}
 
-              {/* Generation Studio - Hidden for guests */}
+              {/* Generation Studio - Hidden for guests, blocked during analysis */}
               {!isGuest && (
-              <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
+              <div className={`mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden ${result.vision_result?.is_photo ? 'opacity-60' : ''}`}>
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Brush size={120} />
                 </div>
+                
+                <BlockedOverlay show={(deepAnalysisActive || analysisPhase === 'streaming') && !result.vision_result?.is_photo} accentColor="purple" />
                 
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-8">
@@ -1106,6 +1349,22 @@ function Analyze() {
                     <span className="text-xs text-purple-400 border border-purple-500/30 px-3 py-1 rounded-full bg-purple-500/10 font-bold tracking-wider">ГЕНЕРАЦИЯ</span>
                   </div>
                   
+                  {/* Unavailable for photos */}
+                  {result.vision_result?.is_photo ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gray-800 flex items-center justify-center">
+                        <Brush size={32} className="text-gray-500" />
+                      </div>
+                      <p className="text-gray-400 mb-4 max-w-2xl mx-auto">
+                        AI Переосмысление недоступно для фотографий
+                      </p>
+                      <p className="text-gray-500 text-sm max-w-xl mx-auto">
+                        Генерация вариаций в стиле художника работает только с произведениями искусства.
+                        Загрузите картину или рисунок для использования этой функции.
+                      </p>
+                    </div>
+                  ) : (
+                  <>
                   <p className="text-gray-400 mb-8 max-w-2xl">
                     Визуализируйте это произведение в разных контекстах или вариациях, используя нашу генеративную модель.
                   </p>
@@ -1163,16 +1422,20 @@ function Analyze() {
                       ))}
                     </div>
                   )}
+                  </>
+                  )}
                 </div>
               </div>
               )}
 
-              {/* Share Analysis Section - Hidden for guests */}
+              {/* Share Analysis Section - Hidden for guests, blocked during analysis */}
               {!isGuest && (
               <div className="mb-24 bg-white/5 border border-white/10 rounded-2xl p-8 md:p-12 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Share2 size={120} />
                 </div>
+                
+                <BlockedOverlay show={deepAnalysisActive || analysisPhase === 'streaming'} accentColor="emerald" />
                 
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-8">
@@ -1250,7 +1513,7 @@ function Analyze() {
                       </button>
                       
                       {/* Status badges */}
-                      <div className="flex items-center gap-3 mb-6">
+                      <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-sm">
                           <Users size={14} />
                           <span>{collabViewers} активных</span>
@@ -1259,6 +1522,16 @@ function Analyze() {
                           <Clock size={14} />
                           <span className="font-mono">{formatCollabTime(collabRemainingTime)}</span>
                         </div>
+                        {/* Deep analysis indicator */}
+                        {deepAnalysisResults && (
+                          <div 
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[#827DBD]/15 border border-[#827DBD]/30 rounded-full cursor-help group relative"
+                            title="Контекст обогащён результатами глубокого исследования"
+                          >
+                            <Brain size={14} className="text-[#827DBD]" />
+                            <span className="text-[#827DBD] text-xs font-medium">Глубокое исследование</span>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Close button */}

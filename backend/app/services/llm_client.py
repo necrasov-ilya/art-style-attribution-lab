@@ -361,12 +361,18 @@ async def _vision_openrouter(
     if not settings.OPENROUTER_API_KEY:
         raise LLMError("OPENROUTER_API_KEY is not configured")
     
+    logger.info(f"OpenRouter Vision: using model {settings.OPENROUTER_VISION_MODEL}")
+    logger.info(f"OpenRouter Vision: image path {image_path}")
+    
     image_b64 = encode_image_to_base64(image_path)
     media_type = get_image_media_type(image_path)
+    
+    logger.info(f"OpenRouter Vision: image encoded, media_type={media_type}, b64_length={len(image_b64)}")
     
     timeout = httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
+            logger.info(f"OpenRouter Vision: sending request...")
             response = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
@@ -399,20 +405,37 @@ async def _vision_openrouter(
                     "temperature": temperature
                 }
             )
+            
+            # Log response for debugging
+            logger.info(f"OpenRouter Vision response status: {response.status_code}")
+            
             response.raise_for_status()
             data = response.json()
+            
+            # Check if we have valid response structure
+            if "choices" not in data or not data["choices"]:
+                logger.error(f"OpenRouter Vision returned invalid response: {data}")
+                raise LLMError(f"OpenRouter Vision returned empty response")
+            
             content = data["choices"][0]["message"]["content"]
+            logger.info(f"OpenRouter Vision response content length: {len(content)} chars")
             return clean_think_tags(content)
             
         except httpx.TimeoutException:
             logger.error(f"OpenRouter Vision request timed out after {settings.LLM_TIMEOUT}s")
             raise LLMError(f"OpenRouter Vision request timed out. Try again or increase LLM_TIMEOUT.")
         except httpx.HTTPStatusError as e:
-            logger.error(f"OpenRouter Vision API error: {e.response.status_code} - {e.response.text}")
-            raise LLMError(f"OpenRouter Vision API error: {e.response.status_code}")
+            error_text = e.response.text[:500] if e.response.text else "No error text"
+            logger.error(f"OpenRouter Vision API error: {e.response.status_code} - {error_text}")
+            raise LLMError(f"OpenRouter Vision API error: {e.response.status_code} - {error_text}")
+        except KeyError as e:
+            logger.error(f"OpenRouter Vision response missing key: {e}, response: {data if 'data' in dir() else 'no data'}")
+            raise LLMError(f"OpenRouter Vision response format error: missing {e}")
         except Exception as e:
-            logger.error(f"OpenRouter Vision request failed: {e}")
-            raise LLMError(f"OpenRouter Vision request failed: {str(e)}")
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"OpenRouter Vision request failed: {type(e).__name__}: {e}\n{tb}")
+            raise LLMError(f"OpenRouter Vision request failed: {type(e).__name__}: {str(e)}")
 
 
 async def _vision_openai(

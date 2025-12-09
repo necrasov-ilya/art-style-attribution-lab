@@ -2,8 +2,21 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, Set, Tuple
+from typing import Dict, Set, Tuple, Optional
 from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
+
+
+class RateLimitExceeded(HTTPException):
+    """Custom exception with Retry-After header for rate limiting."""
+    
+    def __init__(self, detail: str, retry_after_seconds: int):
+        self.retry_after = retry_after_seconds
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            headers={"Retry-After": str(retry_after_seconds)}
+        )
 
 
 class ConcurrentOperationLimiter:
@@ -77,7 +90,7 @@ class ConcurrentOperationLimiter:
 
 
 class RateLimiter:
-    """Simple in-memory rate limiter."""
+    """Simple in-memory rate limiter with Retry-After support."""
 
     def __init__(self):
         # Track requests: {user_id: [(timestamp, endpoint)]}
@@ -85,23 +98,27 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
         # Rate limits per endpoint (requests per minute)
+        # Increased limits for better UX
         self.limits = {
-            "/api/analyze": 10,
-            "/api/generate": 5,
-            "/api/deep-analysis/full": 3,
-            "/api/deep-analysis/module": 10,
-            "default": 60,
+            "/api/analyze": 15,          # Was 10
+            "/api/generate": 8,          # Was 5
+            "/api/deep-analysis/full": 5,  # Was 3
+            "/api/deep-analysis/module": 15,  # Was 10
+            "default": 100,              # Was 60
         }
+        
+        # Sliding window in seconds
+        self.window_seconds = 60
 
     async def check_rate_limit(self, user_id: int, endpoint: str) -> None:
         """
         Check if user has exceeded rate limit for this endpoint.
 
-        Raises HTTPException if limit exceeded.
+        Raises RateLimitExceeded with Retry-After header if limit exceeded.
         """
         async with self._lock:
             now = datetime.now()
-            window_start = now - timedelta(minutes=1)
+            window_start = now - timedelta(seconds=self.window_seconds)
 
             # Clean old requests
             self._requests[user_id] = [
@@ -116,15 +133,21 @@ class RateLimiter:
             limit = self.limits.get(normalized_endpoint, self.limits["default"])
 
             # Count recent requests to this endpoint
-            recent_count = sum(
-                1 for ts, ep in self._requests[user_id]
+            endpoint_requests = [
+                (ts, ep) for ts, ep in self._requests[user_id]
                 if ep == normalized_endpoint
-            )
+            ]
+            recent_count = len(endpoint_requests)
 
             if recent_count >= limit:
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded. Maximum {limit} requests per minute for this endpoint."
+                # Calculate when the oldest request will expire
+                oldest_request = min(ts for ts, ep in endpoint_requests)
+                retry_after = int((oldest_request + timedelta(seconds=self.window_seconds) - now).total_seconds()) + 1
+                retry_after = max(1, min(retry_after, 60))  # Clamp between 1-60 seconds
+                
+                raise RateLimitExceeded(
+                    detail=f"Rate limit exceeded. Maximum {limit} requests per minute. Try again in {retry_after} seconds.",
+                    retry_after_seconds=retry_after
                 )
 
             # Add current request

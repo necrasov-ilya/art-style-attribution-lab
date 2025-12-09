@@ -326,6 +326,6 @@ async def update_session(
     
     # Check if deep analysis is included
     deep_analysis = request.analysis_data.get("deep_analysis_result", {})
-    has_deep_analysis = bool(deep_analysis and deep_analysis.get("text"))
+    has_deep_analysis = bool(deep_analysis and deep_analysis.get("summary"))
     
     return CollaborativeUpdateResponse(success=True, has_deep_analysis=has_deep_analysis)

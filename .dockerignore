@@ -1,0 +1,44 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# Environment files
+.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.log

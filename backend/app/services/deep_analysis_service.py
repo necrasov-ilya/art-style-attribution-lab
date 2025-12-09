@@ -9,6 +9,7 @@ This module provides deep analysis functionality including:
 
 Uses computer vision for feature extraction and LLM for interpretation.
 """
+import asyncio
 import json
 import logging
 import math
@@ -38,6 +39,40 @@ from app.services.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============ Retry Helper ============
+
+async def retry_llm_call(func, *args, max_retries: int = 2, delay: float = 2.0, **kwargs):
+    """Retry an LLM call with exponential backoff.
+    
+    Args:
+        func: Async function to call
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries (doubles each attempt)
+        *args, **kwargs: Arguments to pass to func
+        
+    Returns:
+        Result from func
+        
+    Raises:
+        Last exception if all retries fail
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except (LLMError, asyncio.TimeoutError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                wait_time = delay * (2 ** attempt)
+                logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"LLM call failed after {max_retries + 1} attempts: {e}")
+    
+    raise last_exception
 
 
 # ============ Robust JSON Parser ============
@@ -771,20 +806,33 @@ def extract_scene_features(image_path: str) -> Dict[str, Any]:
 
 # ============ LLM Integration ============
 
+async def _llm_generate_with_retry(system_prompt: str, user_prompt: str, max_tokens: int = 2500) -> str:
+    """Helper to generate LLM response with retry logic."""
+    provider = get_cached_provider()
+    
+    async def _generate():
+        return await provider.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+            temperature=0.7
+        )
+    
+    return await retry_llm_call(_generate, max_retries=1, delay=3.0)
+
+
 async def analyze_color_psychology(color_features: Dict[str, Any]) -> Dict[str, Any]:
     """Generate color psychology analysis using LLM."""
     if settings.LLM_PROVIDER.lower() == "none":
         return _build_stub_color_analysis(color_features)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_color_psychology_prompt(color_features)
         
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=COLOR_PSYCHOLOGY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=2500,
-            temperature=0.7
+            max_tokens=2500
         )
         
         cleaned = clean_think_tags(response)
@@ -829,14 +877,12 @@ async def analyze_composition(composition_features: Dict[str, Any]) -> Dict[str,
         return _build_stub_composition_analysis(composition_features)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_composition_prompt(composition_features)
         
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=COMPOSITION_ANALYSIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=2500,
-            temperature=0.7
+            max_tokens=2500
         )
         
         cleaned = clean_think_tags(response)
@@ -887,14 +933,12 @@ async def analyze_scene(
         return _build_stub_scene_analysis(scene_features)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_scene_prompt(scene_features, ml_predictions)
         
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=SCENE_ANALYSIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=2500,
-            temperature=0.7
+            max_tokens=2500
         )
         
         cleaned = clean_think_tags(response)
@@ -940,14 +984,12 @@ async def analyze_technique(
         return _build_stub_technique_analysis(ml_predictions)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_technique_prompt(ml_predictions, color_features, composition_features)
         
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=TECHNIQUE_ANALYSIS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=2500,
-            temperature=0.7
+            max_tokens=2500
         )
         
         cleaned = clean_think_tags(response)
@@ -999,7 +1041,6 @@ async def analyze_historical_context(
         return _build_stub_historical_analysis(ml_predictions)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_historical_context_prompt(
             ml_predictions,
             color_analysis,
@@ -1008,11 +1049,10 @@ async def analyze_historical_context(
             technique_analysis
         )
         
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=HISTORICAL_CONTEXT_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=1500,
-            temperature=0.7
+            max_tokens=1500
         )
         
         cleaned = clean_think_tags(response)
@@ -1071,7 +1111,6 @@ async def generate_summary(
         return parse_inline_markers(raw_summary)
     
     try:
-        provider = get_cached_provider()
         user_prompt = build_summary_prompt(
             color_analysis,
             composition_analysis,
@@ -1082,11 +1121,10 @@ async def generate_summary(
         )
         
         # Use high max_tokens for comprehensive analysis (8000+ words possible)
-        response = await provider.generate(
+        response = await _llm_generate_with_retry(
             system_prompt=DEEP_ANALYSIS_SUMMARY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            max_tokens=8000,  # Increased significantly for deep analysis
-            temperature=0.75  # Slightly higher for more creative writing
+            max_tokens=8000  # Increased significantly for deep analysis
         )
         
         cleaned_response = clean_think_tags(response)

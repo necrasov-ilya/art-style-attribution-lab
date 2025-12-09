@@ -147,7 +147,7 @@ async def run_full_analysis(
 
     Each step builds on previous results for comprehensive analysis.
 
-    Rate limited to 3 requests per minute.
+    Rate limited to 5 requests per minute.
     Cannot run simultaneously with generation or standard analysis.
     """
     # Check rate limit
@@ -186,10 +186,22 @@ async def run_full_analysis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Full deep analysis failed: {e}")
+        error_str = str(e)
+        logger.error(f"Full deep analysis failed: {error_str}", exc_info=True)
+        
+        # Provide more specific error messages
+        if "timeout" in error_str.lower() or "timed out" in error_str.lower():
+            detail = "Превышено время ожидания LLM. Попробуйте снова или проверьте работу Ollama."
+        elif "connect" in error_str.lower() or "connection" in error_str.lower():
+            detail = "Не удалось подключиться к LLM-сервису. Убедитесь, что Ollama запущена."
+        elif "LLMError" in error_str or "ollama" in error_str.lower():
+            detail = f"Ошибка LLM: {error_str}"
+        else:
+            detail = f"Ошибка анализа: {error_str}"
+            
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}"
+            detail=detail
         )
     finally:
         # Always release the lock

@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle auth errors
+// Handle auth errors and rate limiting
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -27,6 +27,18 @@ api.interceptors.response.use(
       localStorage.removeItem('user')
       window.location.href = '/login'
     }
+    
+    // Enhance 429 errors with retry info
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers['retry-after']
+      if (retryAfter) {
+        error.retryAfter = parseInt(retryAfter, 10)
+        // Add human-readable message
+        const detail = error.response.data?.detail || ''
+        error.message = detail || `Слишком много запросов. Подождите ${retryAfter} секунд.`
+      }
+    }
+    
     return Promise.reject(error)
   }
 )
@@ -48,6 +60,114 @@ export const analysisAPI = {
         'Content-Type': 'multipart/form-data',
       },
     })
+  },
+  
+  /**
+   * Analyze image with SSE streaming for real-time updates
+   * @param {File} file - Image file to analyze
+   * @param {Object} callbacks - Event callbacks
+   * @param {Function} callbacks.onPredictions - Called with ML predictions (artists, genres, styles)
+   * @param {Function} callbacks.onVision - Called with Vision AI analysis (for Unknown Artist)
+   * @param {Function} callbacks.onText - Called with each text chunk from LLM
+   * @param {Function} callbacks.onComplete - Called when analysis is complete
+   * @param {Function} callbacks.onError - Called on error
+   * @returns {Promise<void>}
+   */
+  analyzeStream: async (file, { onPredictions, onVision, onText, onComplete, onError }) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const token = localStorage.getItem('token')
+    let receivedComplete = false
+    let receivedError = false
+    let receivedPredictions = false
+    
+    try {
+      const response = await fetch('/api/analyze/stream', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        // Try to extract error message from JSON
+        let errorMsg = `HTTP ${response.status}`
+        try {
+          const errorJson = JSON.parse(errorText)
+          errorMsg = errorJson.detail || errorJson.error || errorMsg
+        } catch {
+          errorMsg = errorText || errorMsg
+        }
+        throw new Error(errorMsg)
+      }
+      
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        buffer += decoder.decode(value, { stream: true })
+        
+        // Parse SSE events
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+        
+        let currentEvent = null
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            try {
+              const parsed = JSON.parse(data)
+              
+              switch (currentEvent) {
+                case 'predictions':
+                  receivedPredictions = true
+                  onPredictions?.(parsed)
+                  break
+                case 'vision':
+                  onVision?.(parsed)
+                  break
+                case 'text':
+                  onText?.(parsed.chunk || '')
+                  break
+                case 'complete':
+                  receivedComplete = true
+                  onComplete?.(parsed)
+                  break
+                case 'error':
+                  receivedError = true
+                  onError?.(parsed.error || 'Unknown error')
+                  break
+              }
+            } catch (e) {
+              // Ignore JSON parse errors for incomplete data
+            }
+            currentEvent = null
+          }
+        }
+      }
+      
+      // If stream ended without complete or error event, handle gracefully
+      if (!receivedComplete && !receivedError) {
+        if (receivedPredictions) {
+          // We got predictions but stream died - consider it complete with what we have
+          onComplete?.({ success: true, explanation_source: 'interrupted' })
+        } else {
+          // Stream ended with nothing - report error
+          onError?.('Stream connection closed unexpectedly')
+        }
+      }
+    } catch (error) {
+      onError?.(error.message || 'Connection error')
+    }
   },
   
   generate: (data) => {
@@ -78,9 +198,13 @@ export const deepAnalysisAPI = {
   /**
    * Run full deep analysis with all modules
    * @param {string} imagePath - Path to image (e.g., /api/uploads/filename.jpg)
+   * Note: Extended timeout for heavy LLM operations
    */
   analyzeFull: (imagePath) => 
-    api.get('/deep-analysis/full', { params: { image_path: imagePath } }),
+    api.get('/deep-analysis/full', { 
+      params: { image_path: imagePath },
+      timeout: 300000
+    }),
   
   /**
    * Get raw color features without LLM interpretation

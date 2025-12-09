@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # LLM Generation settings
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
-    LLM_TIMEOUT: int = 120  
+    LLM_TIMEOUT: int = 180  # Increased from 120 for complex analyses  
     
     # ComfyUI Configuration
     COMFYUI_BASE_URL: str = "http://127.0.0.1:8188"

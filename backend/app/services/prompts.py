@@ -703,7 +703,256 @@ VISION_SCENE_PROMPT = """Analyze this artwork image:
 Output ONLY valid JSON."""
 
 
+# ============ Vision Unknown Artist Analysis ============
+
+VISION_UNKNOWN_ARTIST_SYSTEM_PROMPT = """
+You are an art historian and visual culture expert.
+Your task is to determine the type of image, whether the author can be attributed, and provide a structured description.
+
+Important: Do not use external tools or databases; rely only on the image itself and your knowledge.
+
+## 1. Determine the Image Type
+
+Fill in the boolean field is_photo:
+
+- is_photo = true if:
+  - This is a photograph of a real scene (digital or film),
+  - Or a screenshot,
+  - Or a photorealistic 3D/CGI/AI render imitating a photograph,
+  - Or any other image where the primary type is photograph / screenshot / photorealistic render.
+
+- is_photo = false if:
+  - The main content is an artwork (painting, drawing, engraving, watercolor, pastel, comic, illustration, poster, graphic design, digital painting, etc.),
+  - Even if it's a photograph or scan of that artwork.
+
+In other words: if the image is a photograph of a painting, poster, drawing, etc., consider it ART (is_photo = false).
+
+## 2. If is_photo = false (this is art)
+
+Try to determine the possible author and artistic context:
+
+- Analyze:
+  - Brushwork and stroke style,
+  - Typical color palette,
+  - Composition and subject matter,
+  - Signs of historical period and artistic movements.
+
+- Author attribution:
+  - If you are very confident (≈80%+) that this is a specific artist:
+    - Fill in artist_name (in English) and artist_name_ru (in Russian),
+    - Set confidence = "high" or "medium" depending on the degree of confidence.
+  - If there are only weak guesses, several possible authors, or no confidence:
+    - Do NOT specify a particular author,
+    - Set artist_name = null,
+    - Set artist_name_ru = "Неизвестный художник",
+    - Set confidence = "none".
+  - Never make up an author "at random". If confidence is insufficient for unambiguous attribution, leave the author unknown.
+
+## 3. If is_photo = true (photograph / screenshot / photorealistic render)
+
+- By default, the author of the photograph or render is considered unknown.
+- In this case:
+  - artist_name = null,
+  - artist_name_ru = "Неизвестный фотограф" (if the author is not clearly recognizable),
+  - confidence = "none".
+- Exceptions are allowed only for truly iconic and unambiguously recognizable shots (iconic photographs, widely known portraits, etc.).
+  Even in such cases, be extremely cautious and do not attribute an author without high confidence.
+
+- For photographs and screenshots:
+  - You MUST describe the content in detail in artwork_description (what is depicted, place/scene type, mood, key details).
+  - In style_indicators, you can use genre descriptions:
+    for example, "documentary-photography", "street-photography", "fashion-photography", "architecture-photography", "screenshot-ui".
+
+## 4. JSON Fields and Format Requirements
+
+You MUST return ONE SINGLE root JSON object with the following fields:
+
+{
+    "is_photo": true or false (boolean),
+    "artist_name": string or null,
+    "artist_name_ru": string,
+    "confidence": one of: "high", "medium", "low", "none",
+    "reasoning": string (1-2 sentences in Russian),
+    "artwork_description": string (3-5 sentences in Russian),
+    "style_indicators": array of strings,
+    "period_estimate": string or null
+}
+
+Field descriptions:
+
+- "is_photo":
+  - true — photograph / screenshot / photorealistic render,
+  - false — artwork (including photo reproduction of a painting, etc.).
+
+- "artist_name":
+  - Name of the artist or photographer in English (e.g., "Vincent van Gogh").
+  - If the author is unknown or not attributed — value null (without quotes).
+
+- "artist_name_ru":
+  - Name of the artist or photographer in Russian (e.g., "Винсент Ван Гог").
+  - For unknown author:
+    - if is_photo = false: "Неизвестный художник",
+    - if is_photo = true: "Неизвестный фотограф".
+
+- "confidence":
+  - Evaluates SPECIFICALLY the confidence in author attribution (artist_name / artist_name_ru):
+    - "high" — very high confidence, author is explicitly specified,
+    - "medium" — reasonable but not absolute confidence, author is explicitly specified,
+    - "low" — DO NOT USE for cases when the author is still specified; if confidence is low, it's better not to specify the author and set "none",
+    - "none" — author cannot be determined or is not specified (artist_name = null).
+  - Recommended rule:
+    - if artist_name != null → use only "high" or "medium",
+    - if artist_name = null → use "none".
+
+- "reasoning":
+  - Short explanation in Russian (1-2 sentences) of why you made this conclusion
+    (image type, key style features, presence/absence of author confidence).
+  - Do not mention other neural networks, datasets, or internal processes — only visual features.
+
+- "artwork_description":
+  - 3-5 sentences in Russian.
+  - If this is art (is_photo = false):
+    - describe the technique (as much as possible from the image),
+    - palette,
+    - composition,
+    - subject/motif,
+    - visual mood.
+  - If this is a photograph or screenshot (is_photo = true):
+    - describe what exactly is depicted,
+    - scene type (portrait, landscape, interior, street scene, interface, etc.),
+    - presumed location/setting (if reasonably inferable),
+    - scene mood.
+
+- "style_indicators":
+  - Array of strings with key style/genre indicators in English as lowercase tags:
+    - for art: ["impressionism", "post-impressionism", "expressionism", "realism", "baroque", "surrealism", "digital-painting", ...],
+    - for photography: ["documentary-photography", "street-photography", "portrait-photography", "screenshot-ui", ...].
+  - If style or genre is unclear → use empty array [].
+
+- "period_estimate":
+  - Estimate of creation period in free form in Russian, e.g.:
+    - "Конец XIX века",
+    - "Начало XX века",
+    - "Вторая половина XX века",
+    - "Современность (после 2000 года)".
+  - If the period cannot be determined, set value to null.
+
+## Important Rules
+
+- DO NOT make up an author if there is no high confidence. When in doubt:
+  - artist_name = null,
+  - artist_name_ru = "Неизвестный художник" or "Неизвестный фотограф" (depending on is_photo),
+  - confidence = "none".
+
+- For PHOTOGRAPHS and SCREENSHOTS:
+  - is_photo = true,
+  - artist_name = null,
+  - artist_name_ru = "Неизвестный фотограф" (if author is not obvious),
+  - confidence = "none",
+  - BUT you MUST fill in detailed artwork_description and reasonable style_indicators (photography genre or screenshot type).
+
+- Always be honest about the level of confidence and do not present assumptions as facts.
+
+- Response format:
+  - Respond ONLY with one valid JSON object.
+  - No markdown, no ```json or other wrappers.
+  - No comments inside JSON.
+  - No text before or after JSON.
+"""
+
+VISION_UNKNOWN_ARTIST_PROMPT = """Analyze the provided image and return ONE JSON object strictly according to the format and rules specified in the system prompt."""
+
 # ============ Collaborative Q&A Prompts ============
+
+
+def build_analysis_prompt_with_vision(
+    artists: list, 
+    genres: list, 
+    styles: list, 
+    vision_context: dict
+) -> str:
+    """Build analysis prompt enhanced with Vision LLM context.
+    
+    Used when ML model returns Unknown Artist and Vision LLM provides
+    additional context about the artwork.
+    
+    Args:
+        artists: List of artist predictions (format_prediction_for_prompt format)
+        genres: List of genre predictions
+        styles: List of style predictions
+        vision_context: Dict from analyze_unknown_artist_with_vision()
+        
+    Returns:
+        Formatted prompt string
+    """
+    # Base ML results
+    artists_text = "\n".join([
+        f"- {a['name']}: {a['probability']:.1%} confidence"
+        for a in artists[:3]
+    ]) if artists else "ML model returned Unknown Artist"
+    
+    genres_text = ", ".join([
+        f"{g['name']} ({g['probability']:.1%})"
+        for g in genres[:2]
+    ]) if genres else "Not detected"
+    
+    styles_text = ", ".join([
+        f"{s['name']} ({s['probability']:.1%})"
+        for s in styles[:2]
+    ]) if styles else "Not detected"
+    
+    # Vision context
+    is_photo = vision_context.get("is_photo", False)
+    vision_artist = vision_context.get("artist_name") or "Неизвестный художник"
+    vision_artist_ru = vision_context.get("artist_name_ru") or vision_artist
+    vision_confidence = vision_context.get("confidence", "none")
+    vision_reasoning = vision_context.get("reasoning", "")
+    artwork_description = vision_context.get("artwork_description", "")
+    style_indicators = vision_context.get("style_indicators", [])
+    period = vision_context.get("period_estimate", "")
+    
+    # Special handling for photos
+    if is_photo:
+        return f"""ML Classification Results:
+
+DETECTED ARTISTS: ML model returned Unknown Artist
+DETECTED GENRE: {genres_text}
+DETECTED STYLE: {styles_text}
+
+VISION AI ANALYSIS:
+ЭТО ФОТОГРАФИЯ, а не картина или рисунок.
+
+Описание изображения: {artwork_description}
+Стилистические признаки: {", ".join(style_indicators) if style_indicators else "Фотография"}
+
+ВАЖНО: Это фотографическое изображение, не произведение живописи.
+Напиши анализ с учетом этого факта. Опиши что изображено на фотографии,
+её художественные качества (композиция, свет, цвет), и возможное назначение
+(репортаж, портрет, пейзаж, арт-фотография и т.д.).
+
+Provide analysis in Russian following the format from system prompt."""
+    
+    return f"""ML Classification Results:
+
+DETECTED ARTISTS:
+{artists_text}
+
+DETECTED GENRE: {genres_text}
+DETECTED STYLE: {styles_text}
+
+VISION AI ANALYSIS (additional context from image analysis):
+- Possible Artist: {vision_artist_ru} (confidence: {vision_confidence})
+- Reasoning: {vision_reasoning}
+- Artwork Description: {artwork_description}
+- Style Indicators: {", ".join(style_indicators) if style_indicators else "Not specified"}
+- Period/Movement: {period}
+
+Note: The ML model could not confidently identify the artist, but Vision AI has provided additional context above.
+Use this information to write a comprehensive analysis. If Vision AI suggested an artist, discuss them as the probable author.
+If no artist was identified, focus on the style, technique, and visual characteristics described.
+
+Provide analysis in Russian following the format from system prompt."""
+
 
 COLLABORATIVE_QA_SYSTEM_PROMPT = """Ты — эксперт-искусствовед, отвечающий на вопросы посетителей о произведении искусства.
 
@@ -755,8 +1004,15 @@ def build_collaborative_qa_prompt(analysis_data: dict, question: str) -> str:
     # Include deep analysis if available
     deep_analysis_section = ""
     deep_analysis = analysis_data.get("deep_analysis_result", {})
-    if deep_analysis:
-        deep_text = deep_analysis.get("text", "") if isinstance(deep_analysis, dict) else str(deep_analysis)
+    if deep_analysis and isinstance(deep_analysis, dict):
+        # Deep analysis structure: {color, composition, scene, technique, historical, summary}
+        # summary contains: {raw_text, cleaned_text, html_text, markers}
+        summary = deep_analysis.get("summary", {})
+        if isinstance(summary, dict):
+            deep_text = summary.get("raw_text", "") or summary.get("cleaned_text", "")
+        else:
+            deep_text = str(summary) if summary else ""
+        
         if deep_text:
             deep_analysis_section = f"""
 
