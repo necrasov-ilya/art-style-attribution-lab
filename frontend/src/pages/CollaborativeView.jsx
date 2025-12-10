@@ -436,20 +436,20 @@ function CollaborativeView() {
                 {/* Deep analysis badge */}
                 {session.has_deep_analysis && (
                   <div 
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#827DBD]/15 border border-[#827DBD]/40 rounded-full cursor-help group relative"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-[#827DBD]/15 border border-[#827DBD]/40 rounded-full cursor-help group relative z-10"
                     title="Контекст обогащён результатами глубокого исследования"
                   >
                     <Brain size={14} className="text-[#827DBD]" />
-                    <span className="text-[#827DBD] text-xs font-medium">Глубокое исследование</span>
+                    <span className="text-[#827DBD] text-xs font-medium whitespace-nowrap">Глубокий анализ</span>
                     <Sparkles size={10} className="text-[#827DBD]/60" />
                     
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-[#1a1a19] border border-[#827DBD]/30 rounded-lg text-xs text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-                      <div className="flex items-center gap-2">
-                        <Brain size={12} className="text-[#827DBD]" />
+                    {/* Tooltip - positioned to stay within viewport */}
+                    <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#1a1a19] border border-[#827DBD]/30 rounded-lg text-xs text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-50 w-56">
+                      <div className="flex items-start gap-2">
+                        <Brain size={12} className="text-[#827DBD] flex-shrink-0 mt-0.5" />
                         <span>AI использует расширенный контекст анализа</span>
                       </div>
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-[#1a1a19] border-r border-b border-[#827DBD]/30 transform rotate-45 -mt-1" />
+                      <div className="absolute top-full right-4 w-2 h-2 bg-[#1a1a19] border-r border-b border-[#827DBD]/30 transform rotate-45 -mt-1" />
                     </div>
                   </div>
                 )}

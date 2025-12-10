@@ -1017,7 +1017,8 @@ def _build_stub_technique_analysis(ml_predictions: Dict) -> Dict:
     """Build stub technique analysis."""
     artist = "неизвестный"
     if ml_predictions and ml_predictions.get("artists"):
-        artist = ml_predictions["artists"][0].get("name", "неизвестный")
+        artist_slug = ml_predictions["artists"][0].get("artist_slug", "неизвестный")
+        artist = artist_slug.replace("-", " ").replace("_", " ").title()
     
     return {
         "brushwork": f"Стиль похож на работы {artist}.",
@@ -1142,7 +1143,8 @@ def _build_stub_summary(ml_predictions: Dict) -> str:
     """Build stub summary with example markers (single braces)."""
     artist = "неизвестный художник"
     if ml_predictions and ml_predictions.get("artists"):
-        artist = ml_predictions["artists"][0].get("name", "неизвестный художник")
+        artist_slug = ml_predictions["artists"][0].get("artist_slug", "неизвестный художник")
+        artist = artist_slug.replace("-", " ").replace("_", " ").title()
     
     return f"""## Сводный анализ
 

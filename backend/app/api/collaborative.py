@@ -103,6 +103,8 @@ async def get_session(
     deep_analysis = session.analysis_data.get("deep_analysis_result")
     has_deep_analysis = bool(deep_analysis)
     
+    logger.info(f"Session {session_id}: deep_analysis_result keys = {list(deep_analysis.keys()) if isinstance(deep_analysis, dict) else deep_analysis}, has_deep_analysis = {has_deep_analysis}")
+    
     return CollaborativeSessionPublic(
         id=session.id,
         image_url=session.image_url,

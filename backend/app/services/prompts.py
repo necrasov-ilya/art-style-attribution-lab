@@ -363,7 +363,10 @@ def build_scene_prompt(scene_features: dict, ml_predictions: dict = None) -> str
     if ml_predictions:
         artists = ml_predictions.get("artists", [])
         if artists:
-            ml_text += f"\nDETECTED STYLE INFLUENCE: {artists[0].get('name', 'Unknown')}"
+            # Handle both artist_slug (from ML) and name (from formatted predictions)
+            artist_slug = artists[0].get('artist_slug') or artists[0].get('name', 'Unknown')
+            artist_name = artist_slug.replace("-", " ").replace("_", " ").title() if isinstance(artist_slug, str) else "Unknown"
+            ml_text += f"\nDETECTED STYLE INFLUENCE: {artist_name}"
         styles = ml_predictions.get("styles", [])
         if styles:
             ml_text += f"\nART MOVEMENT: {styles[0].get('name', 'Unknown')}"
@@ -409,7 +412,9 @@ def build_technique_prompt(ml_predictions: dict, color_features: dict = None, co
     if ml_predictions:
         artists = ml_predictions.get("artists", [])
         if artists:
-            artist_text = artists[0].get("name", "Unknown")
+            # Handle both artist_slug (from ML) and name (from formatted predictions)
+            artist_slug = artists[0].get("artist_slug") or artists[0].get("name", "Unknown")
+            artist_text = artist_slug.replace("-", " ").replace("_", " ").title() if isinstance(artist_slug, str) else "Unknown"
         styles = ml_predictions.get("styles", [])
         if styles:
             style_text = styles[0].get("name", "Unknown")
@@ -470,7 +475,10 @@ def build_historical_context_prompt(
         if artists:
             ml_text += "DETECTED ARTIST INFLUENCES:\n"
             for a in artists:
-                ml_text += f"- {a.get('name', 'Unknown')}: {a.get('probability', 0)*100:.1f}%\n"
+                # Handle both artist_slug (from ML) and name (from formatted predictions)
+                artist_slug = a.get('artist_slug') or a.get('name', 'Unknown')
+                artist_name = artist_slug.replace("-", " ").replace("_", " ").title() if isinstance(artist_slug, str) else "Unknown"
+                ml_text += f"- {artist_name}: {a.get('probability', 0)*100:.1f}%\n"
         
         styles = ml_predictions.get("styles", [])[:2]
         if styles:
@@ -581,7 +589,10 @@ def build_summary_prompt(
     if ml_predictions:
         artists = ml_predictions.get("artists", [])
         if artists:
-            artists_text = ", ".join([f"{a.get('name', 'Unknown')} ({a.get('probability', 0)*100:.0f}%)" for a in artists[:3]])
+            def get_artist_name(a):
+                slug = a.get('artist_slug') or a.get('name', 'Unknown')
+                return slug.replace("-", " ").replace("_", " ").title() if isinstance(slug, str) else "Unknown"
+            artists_text = ", ".join([f"{get_artist_name(a)} ({a.get('probability', 0)*100:.0f}%)" for a in artists[:3]])
             sections.append(f"DETECTED ARTIST INFLUENCES: {artists_text}")
         
         styles = ml_predictions.get("styles", [])

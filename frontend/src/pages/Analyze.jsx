@@ -82,35 +82,36 @@ const MARKER_EXPLANATIONS = {
   artist: (label) => `${label} — художник, чьё влияние прослеживается в работе`,
 }
 
-// Global tooltip state - only one tooltip open at a time
-let globalActiveTooltip = null
-let globalTooltipSetter = null
+// Global tooltip state - only one tooltip open at a time, using callback pattern
+let globalCloseTooltipCallback = null
 
 // Inline marker component with tooltip
 const InlineMarker = ({ type, value, label, icon, markerId }) => {
   const [showTooltip, setShowTooltip] = useState(false)
   
-  // Close this tooltip when another opens
-  useEffect(() => {
-    const checkAndClose = () => {
-      if (globalActiveTooltip !== markerId && showTooltip) {
-        setShowTooltip(false)
-      }
-    }
-    const interval = setInterval(checkAndClose, 50)
-    return () => clearInterval(interval)
-  }, [markerId, showTooltip])
-  
   const handleClick = () => {
     if (showTooltip) {
       setShowTooltip(false)
-      globalActiveTooltip = null
+      globalCloseTooltipCallback = null
     } else {
-      // Close any other open tooltip
-      globalActiveTooltip = markerId
+      // Close any other open tooltip via callback
+      if (globalCloseTooltipCallback) {
+        globalCloseTooltipCallback()
+      }
+      // Set this tooltip's close callback
+      globalCloseTooltipCallback = () => setShowTooltip(false)
       setShowTooltip(true)
     }
   }
+  
+  // Clear callback on unmount if this tooltip is open
+  useEffect(() => {
+    return () => {
+      if (showTooltip && globalCloseTooltipCallback) {
+        globalCloseTooltipCallback = null
+      }
+    }
+  }, [showTooltip])
   const IconComponent = MARKER_ICONS[icon] || Info
   
   const explanation = MARKER_EXPLANATIONS[type]?.(label, value) || `${label}`
@@ -263,17 +264,17 @@ const RichTextWithMarkers = ({ text, markers = [] }) => {
     <ReactMarkdown
       components={{
         h2: ({node, children, ...props}) => (
-          <h2 className="text-2xl font-serif text-white mt-8 mb-4 pb-2 border-b border-white/10" {...props}>
+          <h2 className="text-2xl md:text-3xl font-serif text-white mt-10 mb-5 pb-3 border-b border-white/10" {...props}>
             {typeof children === 'string' ? renderWithMarkers(children) : children}
           </h2>
         ),
         h3: ({node, children, ...props}) => (
-          <h3 className="text-lg font-medium text-gold-400 mt-6 mb-3" {...props}>
+          <h3 className="text-lg md:text-xl font-medium text-gold-400 mt-8 mb-4" {...props}>
             {typeof children === 'string' ? renderWithMarkers(children) : children}
           </h3>
         ),
         p: ({node, children, ...props}) => (
-          <p className="text-gray-300 mb-4 leading-relaxed text-base" {...props}>
+          <p className="text-gray-300 mb-5 leading-relaxed text-base md:text-lg" {...props}>
             {Array.isArray(children) 
               ? children.map((child, i) => typeof child === 'string' ? <span key={i}>{renderWithMarkers(child)}</span> : child)
               : typeof children === 'string' ? renderWithMarkers(children) : children
@@ -286,23 +287,69 @@ const RichTextWithMarkers = ({ text, markers = [] }) => {
           </strong>
         ),
         em: ({node, children, ...props}) => (
-          <em className="text-gray-400 italic" {...props}>
+          <em className="text-gold-300/80 italic" {...props}>
             {typeof children === 'string' ? renderWithMarkers(children) : children}
           </em>
         ),
         li: ({node, children, ...props}) => (
-          <li className="text-gray-300 mb-2" {...props}>
+          <li className="text-gray-300 mb-2 text-base md:text-lg" {...props}>
             {Array.isArray(children) 
               ? children.map((child, i) => typeof child === 'string' ? <span key={i}>{renderWithMarkers(child)}</span> : child)
               : typeof children === 'string' ? renderWithMarkers(children) : children
             }
           </li>
         ),
-        ul: ({node, ...props}) => <ul className="list-disc list-inside mb-4 space-y-1" {...props} />,
+        ul: ({node, ...props}) => <ul className="list-disc list-inside mb-5 space-y-2" {...props} />,
+        ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-5 space-y-2" {...props} />,
       }}
     >
       {text}
     </ReactMarkdown>
+  )
+}
+
+// Isolated timer component to prevent parent re-renders
+const CollabTimerDisplay = ({ initialSeconds, onExpired }) => {
+  const [seconds, setSeconds] = useState(initialSeconds)
+  const timerRef = useRef(null)
+  
+  useEffect(() => {
+    setSeconds(initialSeconds)
+  }, [initialSeconds])
+  
+  useEffect(() => {
+    if (seconds <= 0) {
+      if (timerRef.current) clearInterval(timerRef.current)
+      return
+    }
+    
+    timerRef.current = setInterval(() => {
+      setSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current)
+          onExpired?.()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, []) // Only run once on mount
+  
+  const formatTime = (secs) => {
+    const mins = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+  
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-400 text-sm">
+      <Clock size={14} />
+      <span className="font-mono">{formatTime(seconds)}</span>
+    </div>
   )
 }
 
@@ -351,7 +398,6 @@ function Analyze() {
   const [collabRemainingTime, setCollabRemainingTime] = useState(0)
   const [collabViewers, setCollabViewers] = useState(0)
   const [linkCopied, setLinkCopied] = useState(false)
-  const collabTimerRef = useRef(null)
   const collabPollRef = useRef(null)
 
   // Deep Analysis Steps for progress indicator
@@ -474,7 +520,7 @@ function Analyze() {
   // === Collaborative Session Functions ===
   
   const resetCollabSession = useCallback(() => {
-    if (collabTimerRef.current) clearInterval(collabTimerRef.current)
+    // Note: Timer is now managed by CollabTimerDisplay component internally
     if (collabPollRef.current) clearInterval(collabPollRef.current)
     setCollabSession(null)
     setCollabRemainingTime(0)
@@ -499,23 +545,15 @@ function Analyze() {
       setCollabRemainingTime(response.data.remaining_seconds)
       setCollabViewers(response.data.active_viewers)
       
-      // Start countdown timer
-      collabTimerRef.current = setInterval(() => {
-        setCollabRemainingTime(prev => {
-          if (prev <= 1) {
-            resetCollabSession()
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
+      // Timer countdown is now handled by CollabTimerDisplay component
+      // No setInterval here - it caused parent re-renders and text selection loss
       
-      // Poll for viewer count every 10 seconds
+      // Poll for viewer count every 10 seconds (does NOT update remaining time to avoid re-renders)
       collabPollRef.current = setInterval(async () => {
         try {
           const viewersRes = await collaborativeAPI.getViewers(response.data.id)
           setCollabViewers(viewersRes.data.active_viewers)
-          setCollabRemainingTime(viewersRes.data.remaining_seconds)
+          // Don't update collabRemainingTime here - let CollabTimerDisplay handle it
         } catch (e) {
           console.warn('Failed to fetch viewers:', e)
         }
@@ -584,16 +622,10 @@ function Analyze() {
     }
   }
 
-  const formatCollabTime = (seconds) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (collabTimerRef.current) clearInterval(collabTimerRef.current)
+      // Note: Timer is now managed by CollabTimerDisplay component
       if (collabPollRef.current) clearInterval(collabPollRef.current)
     }
   }, [])
@@ -731,8 +763,12 @@ function Analyze() {
   }, [streamingText, analysisPhase])
 
   const handleDeepAnalysis = async () => {
-    if (!result?.image_path) return
+    if (!result?.image_path) {
+      console.error('No image_path in result:', result)
+      return
+    }
 
+    console.log('Starting deep analysis for:', result.image_path)
     setDeepAnalysisActive(true)
     setDeepAnalysisStep(0)
     setDeepAnalysisError('')
@@ -746,6 +782,7 @@ function Analyze() {
         setDeepAnalysisStep(prev => Math.min(prev + 1, DEEP_ANALYSIS_STEPS.length - 1))
       }, 2000)
 
+      console.log('Calling deepAnalysisAPI.analyzeFull...')
       const response = await deepAnalysisAPI.analyzeFull(result.image_path)
 
       clearInterval(stepInterval)
@@ -821,8 +858,11 @@ function Analyze() {
         user_prompt: generationPrompt,
         count: 4
       })
+      console.log('Generation response:', response.data)
+      console.log('Images:', response.data?.images)
       setGeneratedImages(response.data)
     } catch (err) {
+      console.error('Generation error:', err)
       setGenerationError('Ошибка генерации.')
     } finally {
       setGenerating(false)
@@ -1321,26 +1361,27 @@ function Analyze() {
                       {/* Unified Summary - THE MAIN CONTENT */}
                       {deepAnalysisResults.summary && (
                         <div className="prose prose-invert prose-lg max-w-none">
-                          {/* Compact legend */}
-                          <div className="flex flex-wrap items-center gap-4 mb-6 text-xs text-gray-500 not-prose">
-                            <span>Нажмите на метку для пояснения:</span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="w-3 h-3 rounded bg-gradient-to-br from-blue-400 to-purple-500"></span> цвета
+                          {/* Compact legend - styled as a subtle hint */}
+                          <div className="flex flex-wrap items-center gap-3 md:gap-5 mb-8 py-3 px-4 bg-white/5 rounded-xl border border-white/10 text-xs md:text-sm text-gray-400 not-prose">
+                            <span className="text-gray-500">Интерактивные метки:</span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-3 h-3 rounded bg-gradient-to-br from-blue-400 to-purple-500"></span> 
+                              <span className="text-gray-500">цвета</span>
                             </span>
-                            <span className="inline-flex items-center gap-1 text-purple-400">
-                              <Brush size={10} /> техника
+                            <span className="inline-flex items-center gap-1.5 text-purple-400/80">
+                              <Brush size={12} /> техника
                             </span>
-                            <span className="inline-flex items-center gap-1 text-blue-400">
-                              <Layers size={10} /> композиция
+                            <span className="inline-flex items-center gap-1.5 text-blue-400/80">
+                              <Layers size={12} /> композиция
                             </span>
-                            <span className="inline-flex items-center gap-1 text-pink-400">
-                              <Heart size={10} /> настроение
+                            <span className="inline-flex items-center gap-1.5 text-pink-400/80">
+                              <Heart size={12} /> настроение
                             </span>
-                            <span className="inline-flex items-center gap-1 text-amber-400">
-                              <Clock size={10} /> эпоха
+                            <span className="inline-flex items-center gap-1.5 text-amber-400/80">
+                              <Clock size={12} /> эпоха
                             </span>
-                            <span className="inline-flex items-center gap-1 text-green-400">
-                              <User size={10} /> художник
+                            <span className="inline-flex items-center gap-1.5 text-green-400/80">
+                              <User size={12} /> художник
                             </span>
                           </div>
                           
@@ -1430,7 +1471,15 @@ function Analyze() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       {generatedImages.images.map((img, i) => (
                         <div key={i} className="aspect-square bg-white/5 relative group overflow-hidden rounded-xl border border-white/10">
-                          <img src={img.url} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                          <img 
+                            src={img.url} 
+                            alt="" 
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                            onError={(e) => {
+                              console.error('Image load error:', img.url)
+                              e.target.src = `https://picsum.photos/seed/${Date.now() + i}/512/512`
+                            }}
+                          />
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                             <button 
                               onClick={() => handleDownload(img.url, `generated-${i}.png`)}
@@ -1547,10 +1596,10 @@ function Analyze() {
                           <Users size={14} />
                           <span>{collabViewers} активных</span>
                         </div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-400 text-sm">
-                          <Clock size={14} />
-                          <span className="font-mono">{formatCollabTime(collabRemainingTime)}</span>
-                        </div>
+                        <CollabTimerDisplay 
+                          initialSeconds={collabRemainingTime} 
+                          onExpired={resetCollabSession}
+                        />
                         {/* Deep analysis indicator */}
                         {deepAnalysisResults && (
                           <div 

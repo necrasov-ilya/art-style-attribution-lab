@@ -155,9 +155,10 @@ async def generate_images_with_prompt(
         filenames = client.extract_image_filenames(history)
         logger.info(f"Generated {len(filenames)} images")
         
-        # Build image URLs
+        # Build image URLs - use our proxy endpoint instead of direct ComfyUI URL
+        # This is necessary because ComfyUI (host.docker.internal) is not accessible from browser
         images = [
-            {"url": f"{settings.COMFYUI_BASE_URL}/view?filename={filename}&type=output"}
+            {"url": f"/api/comfyui/view?filename={filename}&type=output"}
             for filename in filenames[:count]
         ]
         

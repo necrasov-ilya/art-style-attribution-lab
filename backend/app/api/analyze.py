@@ -466,3 +466,51 @@ async def generate_style_images(
     finally:
         # Always release the lock
         await concurrent_limiter.release(current_user.id, "generate")
+
+
+@router.get(
+    "/comfyui/view",
+    responses={
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def proxy_comfyui_image(
+    filename: str,
+    type: str = "output",
+):
+    """
+    Proxy endpoint to serve ComfyUI generated images.
+    
+    ComfyUI runs on host.docker.internal which is not accessible from browser.
+    This endpoint proxies the image requests through the backend.
+    """
+    import httpx
+    
+    comfyui_url = f"{settings.COMFYUI_BASE_URL}/view?filename={filename}&type={type}"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(comfyui_url)
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch image from ComfyUI"
+                )
+            
+            # Return the image with correct content type
+            from fastapi.responses import Response
+            return Response(
+                content=response.content,
+                media_type=response.headers.get("content-type", "image/png"),
+                headers={
+                    "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+                }
+            )
+    except httpx.RequestError as e:
+        logger.error(f"Failed to proxy ComfyUI image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="ComfyUI is not accessible"
+        )
