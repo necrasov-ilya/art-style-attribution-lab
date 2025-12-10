@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: art_backend
+    network_mode: "bridge"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Database - подключение к существующему контейнеру art-postgres
+      DATABASE_URL: postgresql://postgres:postgres@172.17.0.2:5432/art_style_db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml/models:/app/ml/models:ro
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: art_frontend
+    network_mode: "bridge"
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
