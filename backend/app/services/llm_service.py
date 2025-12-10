@@ -51,13 +51,13 @@ async def analyze_unknown_artist_with_vision(image_path: str) -> Dict[str, Any]:
             image_path=image_path,
             prompt=VISION_UNKNOWN_ARTIST_PROMPT,
             system_prompt=VISION_UNKNOWN_ARTIST_SYSTEM_PROMPT,
-            max_tokens=1024,
+            max_tokens=2048,  # Increased from 1024 to prevent truncation
             temperature=0.3  # Lower temp for more consistent JSON output
         )
-        
+
         # Clean response and parse JSON
         response = clean_think_tags(response).strip()
-        
+
         # Remove markdown code blocks if present
         if response.startswith("```json"):
             response = response[7:]
@@ -66,14 +66,37 @@ async def analyze_unknown_artist_with_vision(image_path: str) -> Dict[str, Any]:
         if response.endswith("```"):
             response = response[:-3]
         response = response.strip()
-        
+
+        # Try to extract first valid JSON object if response contains multiple attempts
+        if response.count('"is_photo"') > 1:
+            # Multiple JSON objects - extract the first complete one
+            logger.warning("Vision response contains multiple JSON objects, extracting first complete one")
+            try:
+                # Find the end of the first JSON object
+                brace_count = 0
+                first_json_end = -1
+                for i, char in enumerate(response):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            first_json_end = i + 1
+                            break
+
+                if first_json_end > 0:
+                    response = response[:first_json_end]
+                    logger.info(f"Extracted first JSON object (length: {first_json_end})")
+            except Exception as extract_error:
+                logger.warning(f"Failed to extract first JSON: {extract_error}")
+
         try:
             result = json.loads(response)
             logger.info(f"Vision analysis result: artist={result.get('artist_name')}, confidence={result.get('confidence')}")
             return result
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse Vision response as JSON: {e}")
-            logger.error(f"Raw response: {response[:500]}")
+            logger.error(f"Raw response (first 1000 chars): {response[:1000]}")
             # Return a default structure
             return {
                 "is_photo": False,

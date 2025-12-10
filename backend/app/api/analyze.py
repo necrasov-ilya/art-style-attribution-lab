@@ -1,6 +1,7 @@
 """Analyze API endpoint."""
 import json
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
@@ -41,6 +42,22 @@ router = APIRouter(tags=["Analysis"])
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/bmp"}
+
+
+def clean_think_tags(text: str) -> str:
+    """Remove <think> and <thinking> tags from LLM output."""
+    if not text:
+        return ""
+    # Remove <think>...</think> blocks
+    cleaned = re.sub(r'<think[^>]*>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
+    # Remove <thinking>...</thinking> blocks
+    cleaned = re.sub(r'<thinking[^>]*>[\s\S]*?</thinking>', '', cleaned, flags=re.IGNORECASE)
+    # Remove unclosed tags
+    cleaned = re.sub(r'<think[^>]*>[\s\S]*$', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'<thinking[^>]*>[\s\S]*$', '', cleaned, flags=re.IGNORECASE)
+    # Clean up extra newlines
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
 
 
 @router.post(
@@ -323,13 +340,16 @@ async def analyze_image_stream(
             history_id = None
             if not is_guest and unique_filename:
                 try:
+                    # Clean think tags before saving to database
+                    cleaned_explanation = clean_think_tags(full_explanation)
+
                     response_data = {
                         "success": True,
                         "image_path": f"/api/uploads/{unique_filename}",
                         "top_artists": [a.model_dump() for a in top_artists],
                         "top_genres": [g.model_dump() for g in top_genres],
                         "top_styles": [s.model_dump() for s in top_styles],
-                        "explanation": {"text": full_explanation, "source": settings.LLM_PROVIDER},
+                        "explanation": {"text": cleaned_explanation, "source": settings.LLM_PROVIDER},
                         "vision_result": vision_result,
                     }
                     

@@ -69,6 +69,18 @@ function CollaborativeView() {
         setSession(response.data)
         setRemainingTime(response.data.remaining_seconds)
         setError(null)
+
+        // Immediately call heartbeat to get fresh has_deep_analysis status
+        try {
+          const heartbeatRes = await collaborativeAPI.heartbeat(sessionId, viewerId.current)
+          setActiveViewers(heartbeatRes.data.active_viewers)
+          // Update has_deep_analysis from heartbeat
+          if (heartbeatRes.data.has_deep_analysis !== undefined) {
+            setSession(prev => prev ? { ...prev, has_deep_analysis: heartbeatRes.data.has_deep_analysis } : prev)
+          }
+        } catch (hbErr) {
+          console.warn('Initial heartbeat failed:', hbErr)
+        }
       } catch (err) {
         console.error('Failed to load session:', err)
         if (err.response?.status === 404) {
@@ -80,7 +92,7 @@ function CollaborativeView() {
         setLoading(false)
       }
     }
-    
+
     loadSession()
   }, [sessionId])
   

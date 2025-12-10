@@ -407,8 +407,25 @@ function Analyze() {
   const handleHistoryItemClick = (item) => {
     setFile(null)
     setPreview(item.image_url)
-    setResult(item.analysis_result)
+
+    // Clean think tags from explanation if present
+    const cleanedResult = {
+      ...item.analysis_result,
+      explanation: item.analysis_result?.explanation ? {
+        ...item.analysis_result.explanation,
+        text: cleanThinkTags(item.analysis_result.explanation.text || '')
+      } : item.analysis_result?.explanation
+    }
+    setResult(cleanedResult)
     setCurrentHistoryItemId(item.id)
+
+    // Reset all blocking states
+    setAnalysisPhase('idle')
+    setStreamingText('')
+    setVisionResult(null)
+    setLoading(false)
+    setGeneratedImages(null)
+
     // Restore deep analysis if exists
     if (item.deep_analysis_result) {
       setDeepAnalysisResults(item.deep_analysis_result)
@@ -419,6 +436,10 @@ function Analyze() {
       setDeepAnalysisActive(false)
       setDeepAnalysisStep(0)
     }
+
+    // Reset collaborative session
+    resetCollabSession()
+
     setShowHistory(false)
     setTimeout(() => {
       window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' })
@@ -711,20 +732,22 @@ function Analyze() {
 
   const handleDeepAnalysis = async () => {
     if (!result?.image_path) return
-    
+
     setDeepAnalysisActive(true)
     setDeepAnalysisStep(0)
     setDeepAnalysisError('')
     setDeepAnalysisResults(null)
-    
+
+    let stepInterval = null
+
     try {
       // Simulate step progression for UX (actual API does all at once)
-      const stepInterval = setInterval(() => {
+      stepInterval = setInterval(() => {
         setDeepAnalysisStep(prev => Math.min(prev + 1, DEEP_ANALYSIS_STEPS.length - 1))
       }, 2000)
-      
+
       const response = await deepAnalysisAPI.analyzeFull(result.image_path)
-      
+
       clearInterval(stepInterval)
       setDeepAnalysisStep(DEEP_ANALYSIS_STEPS.length)
       setDeepAnalysisResults(response.data)
@@ -768,9 +791,14 @@ function Analyze() {
       }
       
     } catch (err) {
+      // ВАЖНО: очистить интервал при ошибке
+      if (stepInterval) {
+        clearInterval(stepInterval)
+      }
       console.error('Deep analysis failed:', err)
       setDeepAnalysisError(err.response?.data?.detail || 'Ошибка глубокого анализа')
       setDeepAnalysisActive(false)
+      setDeepAnalysisStep(0)  // Сбросить прогресс
     }
   }
 
@@ -1129,16 +1157,17 @@ function Analyze() {
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-4 mb-8 p-4 rounded-xl bg-[#827DBD]/10 border border-[#827DBD]/20"
+                    className="flex items-center gap-5 mb-8 p-6 rounded-2xl bg-gradient-to-br from-[#827DBD]/15 to-[#827DBD]/5 border border-[#827DBD]/30 shadow-lg shadow-[#827DBD]/10 backdrop-blur-sm"
                   >
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#827DBD]/30" style={{ backgroundColor: '#827DBD' }}>
-                      <Brain size={20} className="text-white animate-pulse" />
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl shadow-[#827DBD]/40 relative" style={{ backgroundColor: '#827DBD' }}>
+                      <Brain size={26} className="text-white animate-pulse" />
+                      <div className="absolute inset-0 rounded-full bg-white/20 animate-ping" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs font-medium mb-1 uppercase tracking-wider text-[#827DBD]">
+                      <p className="text-sm font-bold mb-1.5 uppercase tracking-widest text-[#827DBD]">
                         OMNIA Engine думает...
                       </p>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-base text-gray-300 font-light leading-relaxed">
                         Анализирую стилистические особенности произведения
                       </p>
                     </div>

@@ -810,18 +810,11 @@ Field descriptions:
   - Do not mention other neural networks, datasets, or internal processes — only visual features.
 
 - "artwork_description":
-  - 3-5 sentences in Russian.
+  - 2-3 SHORT sentences in Russian (be concise!).
   - If this is art (is_photo = false):
-    - describe the technique (as much as possible from the image),
-    - palette,
-    - composition,
-    - subject/motif,
-    - visual mood.
+    - briefly describe the technique, palette, composition, subject/motif, visual mood.
   - If this is a photograph or screenshot (is_photo = true):
-    - describe what exactly is depicted,
-    - scene type (portrait, landscape, interior, street scene, interface, etc.),
-    - presumed location/setting (if reasonably inferable),
-    - scene mood.
+    - briefly describe what is depicted, scene type, and mood.
 
 - "style_indicators":
   - Array of strings with key style/genre indicators in English as lowercase tags:

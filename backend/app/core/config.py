@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-super-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
+    # Features
+    REGISTRATION_ENABLED: bool = True  # Enable/disable user registration
     
     # Upload settings
     UPLOAD_DIR: Path = Path(__file__).parent.parent.parent / "uploads"
@@ -54,7 +57,7 @@ class Settings(BaseSettings):
     # LLM Generation settings
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
-    LLM_TIMEOUT: int = 180  # Increased from 120 for complex analyses  
+    LLM_TIMEOUT: int = 420  # 7 minutes - increased for deep analysis with multiple LLM calls  
     
     # ComfyUI Configuration
     COMFYUI_BASE_URL: str = "http://127.0.0.1:8188"

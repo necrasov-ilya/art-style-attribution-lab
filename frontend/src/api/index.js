@@ -198,12 +198,12 @@ export const deepAnalysisAPI = {
   /**
    * Run full deep analysis with all modules
    * @param {string} imagePath - Path to image (e.g., /api/uploads/filename.jpg)
-   * Note: Extended timeout for heavy LLM operations
+   * Note: Extended timeout for heavy LLM operations (7 minutes)
    */
-  analyzeFull: (imagePath) => 
-    api.get('/deep-analysis/full', { 
+  analyzeFull: (imagePath) =>
+    api.get('/deep-analysis/full', {
       params: { image_path: imagePath },
-      timeout: 300000
+      timeout: 450000  // 7.5 minutes - longer than backend to avoid premature frontend timeout
     }),
   
   /**
