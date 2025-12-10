@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
     # ML model path
-    ML_DIR: Path = Path(__file__).parent.parent.parent.parent / "ml"
+    ML_DIR: Path = Path(__file__).parent.parent.parent / "ml"
     
     # ML Prediction settings
     ML_INCLUDE_UNKNOWN_ARTIST: bool = False  # Include "Unknown Artist" in predictions
