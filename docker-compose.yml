@@ -9,9 +9,6 @@ services:
     network_mode: "bridge"
     env_file:
       - ./backend/.env
-    environment:
-      # Database - подключение к существующему контейнеру art-postgres
-      DATABASE_URL: postgresql://postgres:postgres@172.17.0.2:5432/art_style_db
     ports:
       - "8000:8000"
     volumes:
