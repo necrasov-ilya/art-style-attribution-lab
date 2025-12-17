@@ -977,18 +977,22 @@ COLLABORATIVE_QA_SYSTEM_PROMPT = """Ты — эксперт-искусствов
 
 def build_collaborative_qa_prompt(analysis_data: dict, question: str) -> str:
     """Build prompt for answering questions about the analysis.
-    
+
     Args:
         analysis_data: Full analysis result dict
         question: User's question
-        
+
     Returns:
         Formatted prompt string
     """
     # Extract key info from analysis
     artists = analysis_data.get("top_artists", [])
     top_artist = artists[0].get("artist_slug", "unknown").replace("-", " ").title() if artists else "Неизвестно"
-    artist_prob = artists[0].get("probability", 0) if artists else 0
+
+    # Apply confidence boost (same as frontend display: min(95, probability * 35))
+    # This ensures the model sees the same confidence value that users see on the UI
+    raw_prob = artists[0].get("probability", 0) if artists else 0
+    artist_prob = min(0.95, raw_prob * 35)  # Boost x35, max 95%
     
     styles = analysis_data.get("top_styles", [])
     top_style = styles[0].get("name", "unknown").replace("_", " ").title() if styles else "Неопределён"

@@ -6,13 +6,22 @@ import { useTheme } from '../context/ThemeContext'
 import { analysisAPI, historyAPI, deepAnalysisAPI, collaborativeAPI } from '../api'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react'
-import { 
-  Upload, X, Search, Zap, LogOut, LogIn, Palette, Brush, BookOpen, 
-  Sparkles, Loader2, Download, History, ChevronLeft, ChevronRight, 
+import {
+  Upload, X, Search, Zap, LogOut, LogIn, Palette, Brush, BookOpen,
+  Sparkles, Loader2, Download, History, ChevronLeft, ChevronRight,
   Maximize2, PanelRightClose, PanelRightOpen, Image as ImageIcon,
   Share2, Info, Layers, Eye, Menu, Clock, Sun, Compass, Heart, User,
   Users, Copy, Check, Link2, Brain
 } from 'lucide-react'
+
+// Vision confidence to probability mapping
+// These values are chosen so that after applying the boost (x35), they display well
+const VISION_CONFIDENCE_TO_PROBABILITY = {
+  'high': 0.85,    // 85% → after boost x35 = ~95% (capped)
+  'medium': 0.50,  // 50% → after boost x35 = ~95% (capped)
+  'low': 0.25,     // 25% → after boost x35 = ~87%
+  'none': 0.0      // 0%
+}
 
 // Clean think tags from LLM response
 const cleanThinkTags = (text) => {
@@ -675,17 +684,20 @@ function Analyze() {
         onVision: (data) => {
           // Vision analysis complete - now show results
           setVisionResult(data)
-          
+
           // Determine artist name to display
           let artistSlug = 'unknown-artist'
           let artistDisplay = data.artist_name_ru || data.artist_name || 'Неизвестный художник'
           if (data.artist_name && data.confidence !== 'none') {
             artistSlug = data.artist_name.toLowerCase().replace(/\s+/g, '-')
           }
-          
+
+          // Convert Vision confidence to probability
+          const visionProbability = VISION_CONFIDENCE_TO_PROBABILITY[data.confidence] || 0
+
           // Build result with vision data
           const topArtists = data.artist_name && data.confidence !== 'none'
-            ? [{ artist_slug: artistSlug, probability: 0, index: -1 }, ...(predictionsData?.top_artists?.slice(1) || [])]
+            ? [{ artist_slug: artistSlug, probability: visionProbability, index: -1 }, ...(predictionsData?.top_artists?.slice(1) || [])]
             : predictionsData?.top_artists || []
           
           setResult({
